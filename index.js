@@ -21,7 +21,7 @@ const userFailedAttempts = new Map();
 const humanModeUsers = new Set();
 
 // Mensaje del sistema personalizado para GPT
-const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Martín. Atiendes consultas ciudadanas relacionadas con distintas áreas:
+const SYSTEM_PROMPT = `Sos un asistente virtual de la Municipalidad de General San Martín, Mendoza. Atendés consultas ciudadanas relacionadas con distintas áreas:
 
 - Economía Social y Asociativismo
 - Punto Digital
@@ -30,7 +30,20 @@ const SYSTEM_PROMPT = `Eres un asistente virtual de la Municipalidad de San Mart
 - Programas Nacionales
 - Trámites y contacto general con el municipio
 
-Responde en español con un lenguaje claro, humano y accesible. Usa emojis ocasionalmente para hacer la conversación más amigable.`;
+Respondés en español con un lenguaje claro, humano y accesible. Tu objetivo es orientar, informar y ayudar al ciudadano. Si la consulta no corresponde a tu ámbito, indicás cómo continuar o derivás a un operador.
+
+Siempre mantenés el contexto de la conversación. Por ejemplo, si el usuario menciona "Punto Digital", y luego dice "¿cómo me inscribo?", debés responder en ese contexto.
+
+Podés usar como referencia las páginas oficiales:
+- https://www.sanmartinmza.gob.ar
+- https://cursos.sanmartinmza.gob.ar
+- https://www.mendoza.gov.ar/desarrollosocial/subsecretariads/areas/dllo-emprendedor/
+- https://www.argentina.gob.ar/
+- https://www.mendoza.gov.ar/
+
+También usás los documentos cargados sobre cada área si están disponibles. Si el usuario dice “operador”, informás cómo contactarlo. Si dice “bot”, volvés a activarte.
+
+Usá un tono amable, inclusivo y profesional. Evitá tecnicismos innecesarios. Si algo no está en tu conocimiento, indicá que podés derivar o sugerir buscarlo en la web del municipio.`;
 
 // Configuración optimizada de Puppeteer para entornos cloud/serverless
 const puppeteerOptions = {
@@ -88,19 +101,25 @@ async function responderConGPT(userId, message) {
   try {
     // Obtener o inicializar historial de chat
     let history = chatHistories.get(userId) || [];
-    if (history.length === 0) {
-      history.push({ role: 'system', content: SYSTEM_PROMPT });
+    // Siempre asegurarse de que el primer mensaje sea el prompt de sistema
+    if (history.length === 0 || history[0].role !== 'system') {
+      history = [{ role: 'system', content: SYSTEM_PROMPT }];
     }
 
     // Añadir el mensaje del usuario
     history.push({ role: 'user', content: message });
 
+    // Limitar historial a los últimos 6 mensajes + prompt de sistema
+    if (history.length > 7) {
+      history = [history[0], ...history.slice(-6)];
+    }
+
     // Llamar a la API de OpenAI
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-3.5-turbo-0125', // Más rápido y económico
       messages: history,
-      temperature: 0.7,
-      max_tokens: 500
+      temperature: 0.5, // Más precisión y menos inventos
+      max_tokens: 400
     });
 
     const reply = response.choices[0]?.message?.content?.trim() || 
@@ -109,9 +128,9 @@ async function responderConGPT(userId, message) {
     // Guardar respuesta en el historial
     history.push({ role: 'assistant', content: reply });
 
-    // Limitar el tamaño del historial
-    if (history.length > 12) {
-      history = [history[0], ...history.slice(-11)];
+    // Limitar historial a los últimos 6 mensajes + prompt de sistema
+    if (history.length > 7) {
+      history = [history[0], ...history.slice(-6)];
     }
     chatHistories.set(userId, history);
 
