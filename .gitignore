@@ -1,0 +1,25 @@
+# Node
+node_modules/
+.env
+*.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials
+serviceAccount*.json
+gac.json
+
+# Fly.io
+.fly/
+
+# Misc
+*.swp
