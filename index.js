@@ -51,22 +51,25 @@ const puppeteerOptions = {
   args: [
     '--no-sandbox',
     '--disable-setuid-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-accelerated-2d-canvas',
-    '--no-first-run',
-    '--no-zygote',
-    '--single-process',
-    '--disable-gpu',
-    '--disable-software-rasterizer',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--window-size=1920,1080',
-    '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    '--disable-dev-shm-usage'
   ],
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
   timeout: 60000 // 60 segundos
 };
+
+console.log('🟡 [DEBUG] Puppeteer options:', puppeteerOptions);
+
+// Prueba: lanzar Chrome solo para verificar que arranca
+(async () => {
+  try {
+    const puppeteer = require('puppeteer');
+    const browser = await puppeteer.launch(puppeteerOptions);
+    console.log('🟢 [DEBUG] Chrome lanzado correctamente con Puppeteer.');
+    await browser.close();
+  } catch (err) {
+    console.error('🔴 [DEBUG] Error al lanzar Chrome con Puppeteer:', err);
+  }
+})();
 
 // Configuración del cliente WhatsApp
 const client = new Client({
