@@ -3,20 +3,6 @@ require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 
-// Configuración de Dialogflow (integrado directamente)
-const dialogflow = require('@google-cloud/dialogflow');
-let sessionClient;
-let projectId;
-
-try {
-  const GOOGLE_CREDENTIALS = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON || '{}');
-  projectId = GOOGLE_CREDENTIALS.project_id;
-  sessionClient = new dialogflow.SessionsClient({ credentials: GOOGLE_CREDENTIALS });
-  console.log('✅ [Dialogflow] Configurado correctamente');
-} catch (error) {
-  console.error('❌ [Dialogflow] Error de configuración:', error);
-}
-
 // Configuración de OpenAI para fallback
 const { OpenAI } = require('openai');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -65,7 +51,7 @@ const puppeteerOptions = {
 
 // Configuración del cliente WhatsApp
 const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: './session' }),
+  authStrategy: new LocalAuth({ dataPath: '/app/session' }),
   puppeteer: puppeteerOptions
 });
 
@@ -92,34 +78,6 @@ client.on('disconnected', reason => {
   console.warn('🔌 [WhatsApp] Desconectado:', reason);
   setTimeout(() => client.initialize(), 5000);
 });
-
-// Función para enviar texto a Dialogflow
-async function sendTextToDialogflow(userId, messageText) {
-  if (!sessionClient || !projectId) {
-    throw new Error('Dialogflow no está configurado correctamente');
-  }
-
-  const sessionPath = sessionClient.projectAgentSessionPath(projectId, userId);
-  const request = {
-    session: sessionPath,
-    queryInput: {
-      text: {
-        text: messageText,
-        languageCode: 'es',
-      },
-    }
-  };
-
-  try {
-    const responses = await sessionClient.detectIntent(request);
-    const result = responses[0].queryResult;
-    const replyText = result.fulfillmentText || 'No entendí eso. ¿Podés repetirlo?';
-    return { replyText, isFallback: result.intent.isFallback };
-  } catch (error) {
-    console.error('❌ [Dialogflow] Error:', error);
-    throw error;
-  }
-}
 
 // Función para responder con GPT
 async function responderConGPT(userId, message) {
@@ -171,6 +129,14 @@ client.on('message', async msg => {
   console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
 
   try {
+    // Procesamiento normal con GPT
+    if (!openai) {
+      await msg.reply('Lo siento, el servicio de asistencia avanzada no está disponible en este momento.');
+      // Solo en caso de error técnico, ofrecer operador
+      await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
+      return;
+    }
+
     // Verificar comandos de transferencia a humano/bot
     if (incoming.toLowerCase() === 'operador') {
       humanModeUsers.add(userId);
@@ -190,61 +156,30 @@ client.on('message', async msg => {
     // Contador de intentos fallidos
     let failedAttempts = userFailedAttempts.get(userId) || 0;
     
-    // Primero intentar con Dialogflow
+    // Intentar con GPT
     try {
-      const { replyText, isFallback } = await sendTextToDialogflow(userId, incoming);
-      
-      // Si Dialogflow devuelve una respuesta válida (no es un fallback)
-      if (!isFallback) {
-        // Resetear contador de intentos fallidos si hubo éxito
-        if (failedAttempts > 0) {
-          userFailedAttempts.set(userId, 0);
-        }
-        
-        await msg.reply(replyText);
-        console.log(`📤 [Respuesta Dialogflow] ${userId}: ${replyText}`);
-        return;
-      }
-      
-      // Si llegamos aquí, Dialogflow no entendió la consulta
-      console.log(`⚠️ [Dialogflow] No entendió la consulta: ${incoming}`);
-      
-      // Incrementar contador de intentos fallidos
-      failedAttempts++;
-      userFailedAttempts.set(userId, failedAttempts);
-      
-      // Si hay demasiados intentos fallidos, sugerir hablar con un humano
-      if (failedAttempts >= 3) {
-        await msg.reply('Parece que estoy teniendo dificultades para entender tu consulta. ¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
-        return;
-      }
-      
-      // Intentar con GPT como fallback
-      if (openai) {
-        const reply = await responderConGPT(userId, incoming);
-        await msg.reply(reply);
-        console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
-      } else {
-        // Si no hay OpenAI configurado, usar respuesta de fallback de Dialogflow
-        await msg.reply(replyText);
-      }
-    } catch (dialogflowError) {
-      console.error('❌ [Error Dialogflow]', dialogflowError);
-      
-      // Si falla Dialogflow y tenemos OpenAI, intentar con GPT
-      if (openai) {
-        const reply = await responderConGPT(userId, incoming);
-        await msg.reply(reply);
-        console.log(`📤 [Respuesta GPT (fallback)] ${userId}: ${reply}`);
-      } else {
-        // Si no hay OpenAI, enviar mensaje de error genérico
-        await msg.reply('Lo siento, estamos experimentando dificultades técnicas. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
-      }
+      const reply = await responderConGPT(userId, incoming);
+      await msg.reply(reply);
+      console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
+    } catch (error) {
+      console.error('❌ [Error al procesar con GPT]', error);
+      await msg.reply('Lo siento, ocurrió un error al procesar tu consulta.');
     }
   } catch (error) {
     console.error('❌ [Error General]', error);
-    await msg.reply('Lo siento, ocurrió un error. Por favor, intenta más tarde o escribe "operador" para hablar con una persona.');
+    await msg.reply('Lo siento, ocurrió un error. Por favor, intenta más tarde.');
+    // Solo en caso de error técnico, ofrecer operador
+    await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
   }
+});
+
+// Servidor HTTP dummy para Fly.io (mantiene el contenedor "vivo")
+const http = require('http');
+http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Bot de WhatsApp activo\n');
+}).listen(3000, '0.0.0.0', () => {
+  console.log('🌐 [HTTP] Servidor dummy escuchando en 0.0.0.0:3000');
 });
 
 // Capturar promesas no manejadas
@@ -253,7 +188,7 @@ process.on('unhandledRejection', reason => {
 });
 
 // Inicializar cliente
-console.log('🚀 [Iniciando] Bot de WhatsApp con Dialogflow y GPT...');
+console.log('🚀 [Iniciando] Bot de WhatsApp con GPT...');
 client.initialize().catch(err => {
   console.error('❌ [Error de inicialización]', err);
   // Reintentar después de un tiempo

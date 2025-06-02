@@ -1,18 +1,17 @@
 {
   "name": "whatsapp-bot-minimalista",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp minimalista con integración de Dialogflow y GPT",
+  "description": "Bot de WhatsApp minimalista con integración de GPT",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "@google-cloud/dialogflow": "^7.0.1",
     "dotenv": "^16.0.3",
     "openai": "^4.0.0",
-    "puppeteer": "^24.9.0",
+    "puppeteer": "^24.10.0",
     "qrcode-terminal": "^0.12.0",
-    "whatsapp-web.js": "^1.19.4"
+    "whatsapp-web.js": "^1.30.0"
   },
   "engines": {
     "node": ">=16.0.0"

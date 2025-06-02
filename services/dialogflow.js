@@ -1,8 +1,7 @@
 import dialogflow from '@google-cloud/dialogflow';
 
-const credentials = JSON.parse(process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
-const sessionClient = new dialogflow.SessionsClient({ credentials });
-const projectId = credentials.project_id;
+const sessionClient = new dialogflow.SessionsClient();
+const projectId = process.env.GOOGLE_CLOUD_PROJECT;
 
 async function sendTextToDialogflow(userId, messageText, userData = {}) {
   const sessionPath = sessionClient.projectAgentSessionPath(projectId, userId);
