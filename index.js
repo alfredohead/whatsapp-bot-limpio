@@ -56,9 +56,15 @@ const puppeteerOptions = {
     '--no-first-run',
     '--no-zygote',
     '--single-process',
-    '--disable-gpu'
+    '--disable-gpu',
+    '--disable-software-rasterizer',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--window-size=1920,1080',
+    '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   ],
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
   timeout: 60000 // 60 segundos
 };
 
@@ -194,7 +200,7 @@ client.on('message', async msg => {
 
 // Servidor HTTP dummy para Fly.io (mantiene el contenedor "vivo")
 const http = require('http');
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot de WhatsApp activo\n');
 }).listen(3000, '0.0.0.0', () => {
@@ -205,6 +211,26 @@ http.createServer((req, res) => {
 process.on('unhandledRejection', reason => {
   console.error('❌ [Error] Promesa no manejada:', reason);
 });
+
+// Manejo de señales para apagado limpio
+function shutdown(signal) {
+  console.log(`\n🛑 [Sistema] Señal recibida: ${signal}. Cerrando bot y servidor HTTP...`);
+  try {
+    client.destroy();
+  } catch (e) {
+    console.error('❌ [Error] al cerrar cliente WhatsApp:', e);
+  }
+  try {
+    server.close(() => {
+      console.log('🌐 [HTTP] Servidor cerrado.');
+      process.exit(0);
+    });
+  } catch (e) {
+    process.exit(1);
+  }
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Inicializar cliente
 console.log('🚀 [Iniciando] Bot de WhatsApp con GPT...');
