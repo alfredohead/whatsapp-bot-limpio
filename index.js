@@ -59,18 +59,6 @@ const puppeteerOptions = {
 
 console.log('🟡 [DEBUG] Puppeteer options:', puppeteerOptions);
 
-// Prueba: lanzar Chrome solo para verificar que arranca
-(async () => {
-  try {
-    const puppeteer = require('puppeteer');
-    const browser = await puppeteer.launch(puppeteerOptions);
-    console.log('🟢 [DEBUG] Chrome lanzado correctamente con Puppeteer.');
-    await browser.close();
-  } catch (err) {
-    console.error('🔴 [DEBUG] Error al lanzar Chrome con Puppeteer:', err);
-  }
-})();
-
 // Configuración del cliente WhatsApp
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: '/app/session' }),
@@ -125,7 +113,7 @@ async function responderConGPT(userId, message) {
 
     // Llamar a la API de OpenAI
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-0125', // Más rápido y económico
+      model: 'gpt-3.5-turbo', // Modelo estándar y accesible
       messages: history,
       temperature: 0.5, // Más precisión y menos inventos
       max_tokens: 400
@@ -237,7 +225,11 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 // Inicializar cliente
 console.log('🚀 [Iniciando] Bot de WhatsApp con GPT...');
-client.initialize().catch(err => {
+console.log('🟢 [DEBUG] Antes de client.initialize()');
+// Inicializar cliente
+client.initialize().then(() => {
+  console.log('🟢 [DEBUG] client.initialize() resuelto');
+}).catch(err => {
   console.error('❌ [Error de inicialización]', err);
   // Reintentar después de un tiempo
   setTimeout(() => {
