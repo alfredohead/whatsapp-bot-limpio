@@ -20,4 +20,4 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 USER pptruser
 
 # Comando para iniciar la aplicación como pptruser, incluso si Fly.io ejecuta como root
-CMD ["su-exec", "pptruser", "node", "index.js"]
+CMD ["node", "index.js"]
