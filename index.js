@@ -48,67 +48,80 @@ const client = new Client({
 // 3. Variables globales
 // ----------------------------------------------------
 const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Área Programas Nacionales). Responde con claridad y brevedad.`;
-const chatHistories    = new Map();   // Map<userId, Array<{ role, content }>>
-const humanModeUsers   = new Set();   // Set<userId> usuarios en modo “operador humano”
+const chatThreads      = new Map();   // Map<userId, threadId>
+const humanModeUsers   = new Set();   // Set<userId> usuarios en modo "operador humano"
 const userFaileds      = new Map();   // Map<userId, número de intentos fallidos
 
 // ----------------------------------------------------
-// 4. Función para responder (siempre usa Assistant ID)
+// 4. Función para responder (usando API de Assistants)
 // ----------------------------------------------------
 async function responderConGPT(userId, message) {
   if (!openai) {
     return 'Lo siento, el servicio de asistencia avanzada no está disponible en este momento.';
   }
 
-  // Construir historial
-  let history = chatHistories.get(userId) || [];
-  if (history.length === 0 || history[0].role !== 'system') {
-    history = [{ role: 'system', content: SYSTEM_PROMPT }];
-  }
-  history.push({ role: 'user', content: message });
-  if (history.length > 7) {
-    history = [history[0], ...history.slice(-6)];
-  }
-
   try {
-    // Si existe Assistant ID, lo usamos (y nunca model genérico)
+    // Si existe Assistant ID, lo usamos
     if (OPENAI_ASSISTANT_ID) {
-      const response = await openai.chat.completions.create({
-        assistant: OPENAI_ASSISTANT_ID,
-        messages: history,
-        temperature: 0.5,
-        max_tokens: 400
+      // Obtener o crear un thread para este usuario
+      let threadId = chatThreads.get(userId);
+      if (!threadId) {
+        const thread = await openai.beta.threads.create();
+        threadId = thread.id;
+        chatThreads.set(userId, threadId);
+      }
+
+      // Añadir el mensaje del usuario al thread
+      await openai.beta.threads.messages.create(threadId, {
+        role: "user",
+        content: message
       });
 
-      const reply = response.choices[0]?.message?.content?.trim() ||
-                    'Disculpa, no pude procesar tu consulta.';
+      // Ejecutar el assistant en el thread
+      const run = await openai.beta.threads.runs.create(threadId, {
+        assistant_id: OPENAI_ASSISTANT_ID
+      });
 
-      // Actualizar historial
-      history.push({ role: 'assistant', content: reply });
-      if (history.length > 7) {
-        history = [history[0], ...history.slice(-6)];
+      // Esperar a que termine la ejecución (con timeout)
+      let runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+      let attempts = 0;
+      const maxAttempts = 30; // 30 segundos máximo
+      
+      while (runStatus.status !== "completed" && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        runStatus = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        attempts++;
       }
-      chatHistories.set(userId, history);
-      return reply;
+      
+      if (runStatus.status !== "completed") {
+        await openai.beta.threads.runs.cancel(threadId, run.id);
+        return 'Lo siento, la respuesta está tardando demasiado. Por favor, intenta de nuevo.';
+      }
+
+      // Obtener los mensajes del thread
+      const messages = await openai.beta.threads.messages.list(threadId);
+      const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
+      
+      if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
+        return assistantMessages[0].content[0].text.value;
+      } else {
+        return 'Disculpa, no pude procesar tu consulta.';
+      }
     }
 
     // (Rama de fallback, solo si por alguna razón falta OPENAI_ASSISTANT_ID)
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
-      messages: history,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: message }
+      ],
       temperature: 0.5,
       max_tokens: 400
     });
 
-    const reply = response.choices[0]?.message?.content?.trim() ||
-                  'Disculpa, no pude procesar tu consulta.';
-
-    history.push({ role: 'assistant', content: reply });
-    if (history.length > 7) {
-      history = [history[0], ...history.slice(-6)];
-    }
-    chatHistories.set(userId, history);
-    return reply;
+    return response.choices[0]?.message?.content?.trim() ||
+           'Disculpa, no pude procesar tu consulta.';
 
   } catch (error) {
     console.error('❌ [GPT] Error:', error);
@@ -141,7 +154,7 @@ client.on('message', async msg => {
       return;
     }
 
-    // Comando “operador” / “bot”
+    // Comando "operador" / "bot"
     if (incoming.toLowerCase() === 'operador') {
       humanModeUsers.add(userId);
       await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribe "bot".');
