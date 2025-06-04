@@ -1,33 +1,37 @@
-// Versión completa de index.js con todas las modificaciones necesarias:
-// - Uso de OPENAI_ASSISTANT_ID para invocar al assistant en lugar del modelo genérico.
-// - Configuración de Puppeteer para permitir ejecución en Fly.io (flags --no-sandbox y --disable-setuid-sandbox).
-// - Toda la lógica original preservada.
+// index.js: Versión final corregida
 
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-
-// Configuración de OpenAI para fallback
 const { OpenAI } = require('openai');
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
-let openai;
 
+// ----------------------------------------------------
+// Lectura de variables de entorno
+// ----------------------------------------------------
+const OPENAI_API_KEY      = process.env.OPENAI_API_KEY;
+const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
+
+// Clip de depuración para confirmar que la variable se cargó
+console.log('🟣 [DEBUG ENV] OPENAI_ASSISTANT_ID =', OPENAI_ASSISTANT_ID);
+
+// Inicializar cliente de OpenAI
+let openai = null;
 if (OPENAI_API_KEY) {
   openai = new OpenAI({ apiKey: OPENAI_API_KEY });
   console.log('✅ [OpenAI] API configurada correctamente');
-  if (!OPENAI_ASSISTANT_ID) {
-    console.warn('⚠️ [OpenAI] No se encontró OPENAI_ASSISTANT_ID en .env. Se usará fallback a modelo genérico si fuera necesario.');
-  } else {
+  if (OPENAI_ASSISTANT_ID) {
     console.log(`✅ [OpenAI] Assistant ID configurado: ${OPENAI_ASSISTANT_ID}`);
+  } else {
+    console.warn('⚠️ [OpenAI] No se encontró OPENAI_ASSISTANT_ID en env. Se usará fallback a modelo genérico.');
   }
 } else {
-  console.warn('⚠️ [OpenAI] API no configurada. El fallback a GPT no estará disponible.');
+  console.warn('⚠️ [OpenAI] OPENAI_API_KEY no configurada. El servicio de GPT no funcionará.');
 }
 
-// ---------------------------------------------
-// Parámetros y estructuras para el bot de WhatsApp
-// ---------------------------------------------
+// ----------------------------------------------------
+// Configuración y creación del cliente de WhatsApp
+// (con Puppeteer flags para Fly.io)
+// ----------------------------------------------------
 const client = new Client({
   puppeteer: {
     headless: true,
@@ -41,36 +45,57 @@ const client = new Client({
   })
 });
 
-const SYSTEM_PROMPT = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Área Programas Nacionales). Responde con claridad y brevedad.`;
-const chatHistories = new Map();        // { userId: [ {role, content}, ... ] }
-const humanModeUsers = new Set();       // usuarios en modo “operador humano”
-const userFailedAttempts = new Map();   // contador de errores por usuario
+// ----------------------------------------------------
+// Variables globales para manejar historial y modo humano
+// ----------------------------------------------------
+const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Área Programas Nacionales). Responde con claridad y brevedad.`;
+const chatHistories    = new Map();   // Map<userId, Array<{ role, content }>>
+const humanModeUsers   = new Set();   // Set<userId> usuarios en modo “operador humano”
+const userFaileds      = new Map();   // Map<userId, número de intentos fallidos>
 
-// ---------------------------------------------
-// Función para responder con GPT (ahora con Assistant)
-// ---------------------------------------------
+// ----------------------------------------------------
+// Función para responder con GPT/Assistant
+// ----------------------------------------------------
 async function responderConGPT(userId, message) {
   if (!openai) {
     return 'Lo siento, el servicio de asistencia avanzada no está disponible en este momento.';
   }
 
-  if (!OPENAI_ASSISTANT_ID) {
-    return 'Lo siento, el asistente no está correctamente configurado. Intenta de nuevo más tarde.';
+  // Construir historial de conversación (prompt de sistema + últimos mensajes)
+  let history = chatHistories.get(userId) || [];
+  if (history.length === 0 || history[0].role !== 'system') {
+    history = [{ role: 'system', content: SYSTEM_PROMPT }];
+  }
+  history.push({ role: 'user', content: message });
+  if (history.length > 7) {
+    history = [history[0], ...history.slice(-6)];
   }
 
   try {
-    let history = chatHistories.get(userId) || [];
-    if (history.length === 0 || history[0].role !== 'system') {
-      history = [{ role: 'system', content: SYSTEM_PROMPT }];
+    // 1) Si existe Assistant ID, lo utilizamos
+    if (OPENAI_ASSISTANT_ID) {
+      const response = await openai.chat.completions.create({
+        assistant: OPENAI_ASSISTANT_ID,
+        messages: history,
+        temperature: 0.5,
+        max_tokens: 400
+      });
+
+      const reply = response.choices[0]?.message?.content?.trim() ||
+                    'Disculpa, no pude procesar tu consulta.';
+
+      // Actualizar historial y devolver respuesta
+      history.push({ role: 'assistant', content: reply });
+      if (history.length > 7) {
+        history = [history[0], ...history.slice(-6)];
+      }
+      chatHistories.set(userId, history);
+      return reply;
     }
 
-    history.push({ role: 'user', content: message });
-    if (history.length > 7) {
-      history = [history[0], ...history.slice(-6)];
-    }
-
+    // 2) Fallback: usar modelo genérico si no hay Assistant ID
     const response = await openai.chat.completions.create({
-      assistant: OPENAI_ASSISTANT_ID,
+      model: 'gpt-3.5-turbo',
       messages: history,
       temperature: 0.5,
       max_tokens: 400
@@ -84,7 +109,6 @@ async function responderConGPT(userId, message) {
       history = [history[0], ...history.slice(-6)];
     }
     chatHistories.set(userId, history);
-
     return reply;
 
   } catch (error) {
@@ -93,9 +117,9 @@ async function responderConGPT(userId, message) {
   }
 }
 
-// ---------------------------------------------
-// Manejo de eventos del cliente de WhatsApp
-// ---------------------------------------------
+// ----------------------------------------------------
+// Eventos del cliente de WhatsApp
+// ----------------------------------------------------
 client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
   console.log('📸 [QR] Escanea este código QR con tu WhatsApp para conectar.');
@@ -111,15 +135,17 @@ client.on('message', async msg => {
   console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
 
   try {
+    // 1) Si OpenAI no está configurado, informamos y ofrecemos operador humano
     if (!openai) {
       await msg.reply('Lo siento, el servicio de asistencia avanzada no está disponible en este momento.');
       await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
       return;
     }
 
+    // 2) Comandos para cambiar a modo “operador humano” / “bot”
     if (incoming.toLowerCase() === 'operador') {
       humanModeUsers.add(userId);
-      await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribí "bot".');
+      await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribe "bot".');
       return;
     }
     if (incoming.toLowerCase() === 'bot') {
@@ -128,23 +154,27 @@ client.on('message', async msg => {
       return;
     }
 
-    if (humanModeUsers.has(userId)) return;
+    // 3) Si el usuario está en modo humano, no procesamos con GPT
+    if (humanModeUsers.has(userId)) {
+      return;
+    }
 
-    let failedAttempts = userFailedAttempts.get(userId) || 0;
+    // 4) Contador de intentos fallidos por usuario
+    let failed = userFaileds.get(userId) || 0;
 
     try {
+      // Llamar a la función que usa OpenAI/Assistant
       const reply = await responderConGPT(userId, incoming);
       await msg.reply(reply);
       console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
-      userFailedAttempts.set(userId, 0);
+      userFaileds.set(userId, 0); // resetear contador cuando hay éxito
 
     } catch (error) {
       console.error('❌ [Error interno al responderConGPT]', error);
-      failedAttempts++;
-      userFailedAttempts.set(userId, failedAttempts);
-
-      if (failedAttempts < 3) {
-        await msg.reply('Lo siento, ocurrió un problema al procesar tu mensaje. Por favor, inténtalo de nuevo.');
+      failed++;
+      userFaileds.set(userId, failed);
+      if (failed < 3) {
+        await msg.reply('Lo siento, hubo un problema al procesar tu mensaje. Por favor, inténtalo de nuevo.');
       } else {
         await msg.reply('Lo siento mucho, estoy teniendo dificultades para responder. ¿Te gustaría hablar con un operador humano? Escribe "operador".');
       }
@@ -157,26 +187,12 @@ client.on('message', async msg => {
   }
 });
 
-// ---------------------------------------------
-// Inicializar cliente
-// ---------------------------------------------
-console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Assistant)...');
-console.log('🟢 [DEBUG] Antes de client.initialize()');
-client.initialize()
-  .then(() => {
-    console.log('🟢 [DEBUG] client.initialize() resuelto');
-  })
-  .catch(err => {
-    console.error('❌ [Error de inicialización]', err);
-    setTimeout(() => {
-      console.log('🔄 Reintentando inicialización...');
-      client.initialize();
-    }, 30000);
-  });
+// ----------------------------------------------------
+// Inicialización del cliente WhatsApp y servidor HTTP dummy
+// ----------------------------------------------------
+console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Assistant/Modelo)…');
+client.initialize();
 
-// ---------------------------------------------
-// Servidor HTTP dummy para Fly.io (mantiene el contenedor “vivo”)
-// ---------------------------------------------
 const http = require('http');
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -185,22 +201,22 @@ const server = http.createServer((req, res) => {
   console.log('🌐 [HTTP] Servidor dummy escuchando en 0.0.0.0:3000');
 });
 
-// ---------------------------------------------
+// ----------------------------------------------------
 // Capturar promesas no manejadas
-// ---------------------------------------------
+// ----------------------------------------------------
 process.on('unhandledRejection', reason => {
   console.error('❌ [Error] Promesa no manejada:', reason);
 });
 
-// ---------------------------------------------
+// ----------------------------------------------------
 // Manejo de señales para apagado limpio
-// ---------------------------------------------
+// ----------------------------------------------------
 function shutdown(signal) {
   console.log(`\n🛑 [Sistema] Señal recibida: ${signal}. Cerrando bot y servidor HTTP...`);
   try {
     client.destroy();
   } catch (e) {
-    console.error('❌ [Error] al cerrar cliente WhatsApp:', e);
+    console.error('❌ [Error] Al cerrar cliente WhatsApp:', e);
   }
   try {
     server.close(() => {
@@ -208,10 +224,9 @@ function shutdown(signal) {
       process.exit(0);
     });
   } catch (e) {
-    console.error('❌ [Error] al cerrar servidor HTTP:', e);
+    console.error('❌ [Error] Al cerrar servidor HTTP:', e);
     process.exit(1);
   }
 }
-
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
