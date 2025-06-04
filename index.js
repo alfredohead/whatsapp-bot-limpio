@@ -1,4 +1,4 @@
-// index.js: Versión final corregida
+// index.js: Versión final corregida con logs de depuración en cada paso clave
 
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -6,12 +6,12 @@ const qrcode = require('qrcode-terminal');
 const { OpenAI } = require('openai');
 
 // ----------------------------------------------------
-// Lectura de variables de entorno
+// 1. Lectura de variables de entorno
 // ----------------------------------------------------
 const OPENAI_API_KEY      = process.env.OPENAI_API_KEY;
 const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
-// Clip de depuración para confirmar que la variable se cargó
+// Debug: confirmar que el Assistant ID se cargó correctamente
 console.log('🟣 [DEBUG ENV] OPENAI_ASSISTANT_ID =', OPENAI_ASSISTANT_ID);
 
 // Inicializar cliente de OpenAI
@@ -29,8 +29,7 @@ if (OPENAI_API_KEY) {
 }
 
 // ----------------------------------------------------
-// Configuración y creación del cliente de WhatsApp
-// (con Puppeteer flags para Fly.io)
+// 2. Configuración del cliente de WhatsApp (Puppeteer flags)
 // ----------------------------------------------------
 const client = new Client({
   puppeteer: {
@@ -46,7 +45,7 @@ const client = new Client({
 });
 
 // ----------------------------------------------------
-// Variables globales para manejar historial y modo humano
+// 3. Variables para historial y modo humano
 // ----------------------------------------------------
 const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Área Programas Nacionales). Responde con claridad y brevedad.`;
 const chatHistories    = new Map();   // Map<userId, Array<{ role, content }>>
@@ -54,14 +53,14 @@ const humanModeUsers   = new Set();   // Set<userId> usuarios en modo “operado
 const userFaileds      = new Map();   // Map<userId, número de intentos fallidos>
 
 // ----------------------------------------------------
-// Función para responder con GPT/Assistant
+// 4. Función para responder con GPT / Assistant
 // ----------------------------------------------------
 async function responderConGPT(userId, message) {
   if (!openai) {
     return 'Lo siento, el servicio de asistencia avanzada no está disponible en este momento.';
   }
 
-  // Construir historial de conversación (prompt de sistema + últimos mensajes)
+  // Construir historial (prompt de sistema + últimos mensajes)
   let history = chatHistories.get(userId) || [];
   if (history.length === 0 || history[0].role !== 'system') {
     history = [{ role: 'system', content: SYSTEM_PROMPT }];
@@ -72,7 +71,7 @@ async function responderConGPT(userId, message) {
   }
 
   try {
-    // 1) Si existe Assistant ID, lo utilizamos
+    // 4.1) Si existe Assistant ID, lo utilizamos
     if (OPENAI_ASSISTANT_ID) {
       const response = await openai.chat.completions.create({
         assistant: OPENAI_ASSISTANT_ID,
@@ -93,7 +92,7 @@ async function responderConGPT(userId, message) {
       return reply;
     }
 
-    // 2) Fallback: usar modelo genérico si no hay Assistant ID
+    // 4.2) Fallback: usar modelo genérico si no hay Assistant ID
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: history,
@@ -118,7 +117,7 @@ async function responderConGPT(userId, message) {
 }
 
 // ----------------------------------------------------
-// Eventos del cliente de WhatsApp
+// 5. Eventos del cliente de WhatsApp
 // ----------------------------------------------------
 client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
@@ -135,14 +134,14 @@ client.on('message', async msg => {
   console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
 
   try {
-    // 1) Si OpenAI no está configurado, informamos y ofrecemos operador humano
+    // 5.1) Si OpenAI no está configurado, informamos y ofrecemos operador humano
     if (!openai) {
       await msg.reply('Lo siento, el servicio de asistencia avanzada no está disponible en este momento.');
       await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
       return;
     }
 
-    // 2) Comandos para cambiar a modo “operador humano” / “bot”
+    // 5.2) Comandos para cambiar a modo “operador humano” / “bot”
     if (incoming.toLowerCase() === 'operador') {
       humanModeUsers.add(userId);
       await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribe "bot".');
@@ -154,12 +153,12 @@ client.on('message', async msg => {
       return;
     }
 
-    // 3) Si el usuario está en modo humano, no procesamos con GPT
+    // 5.3) Si el usuario está en modo humano, no procesamos con GPT
     if (humanModeUsers.has(userId)) {
       return;
     }
 
-    // 4) Contador de intentos fallidos por usuario
+    // 5.4) Contador de intentos fallidos por usuario
     let failed = userFaileds.get(userId) || 0;
 
     try {
@@ -188,10 +187,21 @@ client.on('message', async msg => {
 });
 
 // ----------------------------------------------------
-// Inicialización del cliente WhatsApp y servidor HTTP dummy
+// 6. Inicialización del cliente WhatsApp y servidor HTTP dummy
 // ----------------------------------------------------
 console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Assistant/Modelo)…');
-client.initialize();
+console.log('🟢 [DEBUG] Antes de client.initialize()');
+client.initialize()
+  .then(() => {
+    console.log('🟢 [DEBUG] client.initialize() resuelto');
+  })
+  .catch(err => {
+    console.error('❌ [Error de inicialización]', err);
+    setTimeout(() => {
+      console.log('🔄 Reintentando client.initialize()...');
+      client.initialize();
+    }, 30000);
+  });
 
 const http = require('http');
 const server = http.createServer((req, res) => {
@@ -202,14 +212,14 @@ const server = http.createServer((req, res) => {
 });
 
 // ----------------------------------------------------
-// Capturar promesas no manejadas
+// 7. Capturar promesas no manejadas
 // ----------------------------------------------------
 process.on('unhandledRejection', reason => {
   console.error('❌ [Error] Promesa no manejada:', reason);
 });
 
 // ----------------------------------------------------
-// Manejo de señales para apagado limpio
+// 8. Manejo de señales para apagado limpio
 // ----------------------------------------------------
 function shutdown(signal) {
   console.log(`\n🛑 [Sistema] Señal recibida: ${signal}. Cerrando bot y servidor HTTP...`);
