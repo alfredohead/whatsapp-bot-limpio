@@ -1,4 +1,5 @@
-// index.js: Versión final corregida con logs de depuración en cada paso clave
+// index.js: Versión simplificada que usa siempre el modelo genérico
+// para evitar el error “you must provide a model parameter”.
 
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -8,22 +9,14 @@ const { OpenAI } = require('openai');
 // ----------------------------------------------------
 // 1. Lectura de variables de entorno
 // ----------------------------------------------------
-const OPENAI_API_KEY      = process.env.OPENAI_API_KEY;
-const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// Debug: confirmar que el Assistant ID se cargó correctamente
-console.log('🟣 [DEBUG ENV] OPENAI_ASSISTANT_ID =', OPENAI_ASSISTANT_ID);
+console.log('🟣 [DEBUG ENV] OPENAI_API_KEY =', Boolean(OPENAI_API_KEY));
 
-// Inicializar cliente de OpenAI
 let openai = null;
 if (OPENAI_API_KEY) {
   openai = new OpenAI({ apiKey: OPENAI_API_KEY });
   console.log('✅ [OpenAI] API configurada correctamente');
-  if (OPENAI_ASSISTANT_ID) {
-    console.log(`✅ [OpenAI] Assistant ID configurado: ${OPENAI_ASSISTANT_ID}`);
-  } else {
-    console.warn('⚠️ [OpenAI] No se encontró OPENAI_ASSISTANT_ID en env. Se usará fallback a modelo genérico.');
-  }
 } else {
   console.warn('⚠️ [OpenAI] OPENAI_API_KEY no configurada. El servicio de GPT no funcionará.');
 }
@@ -53,7 +46,7 @@ const humanModeUsers   = new Set();   // Set<userId> usuarios en modo “operado
 const userFaileds      = new Map();   // Map<userId, número de intentos fallidos>
 
 // ----------------------------------------------------
-// 4. Función para responder con GPT / Assistant
+// 4. Función para responder con GPT (modelo genérico)
 // ----------------------------------------------------
 async function responderConGPT(userId, message) {
   if (!openai) {
@@ -71,28 +64,7 @@ async function responderConGPT(userId, message) {
   }
 
   try {
-    // 4.1) Si existe Assistant ID, lo utilizamos
-    if (OPENAI_ASSISTANT_ID) {
-      const response = await openai.chat.completions.create({
-        assistant: OPENAI_ASSISTANT_ID,
-        messages: history,
-        temperature: 0.5,
-        max_tokens: 400
-      });
-
-      const reply = response.choices[0]?.message?.content?.trim() ||
-                    'Disculpa, no pude procesar tu consulta.';
-
-      // Actualizar historial y devolver respuesta
-      history.push({ role: 'assistant', content: reply });
-      if (history.length > 7) {
-        history = [history[0], ...history.slice(-6)];
-      }
-      chatHistories.set(userId, history);
-      return reply;
-    }
-
-    // 4.2) Fallback: usar modelo genérico si no hay Assistant ID
+    // Siempre usamos el modelo genérico "gpt-3.5-turbo"
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: history,
@@ -103,6 +75,7 @@ async function responderConGPT(userId, message) {
     const reply = response.choices[0]?.message?.content?.trim() ||
                   'Disculpa, no pude procesar tu consulta.';
 
+    // Actualizar historial y devolver respuesta
     history.push({ role: 'assistant', content: reply });
     if (history.length > 7) {
       history = [history[0], ...history.slice(-6)];
@@ -162,7 +135,7 @@ client.on('message', async msg => {
     let failed = userFaileds.get(userId) || 0;
 
     try {
-      // Llamar a la función que usa OpenAI/Assistant
+      // Llamar a la función que usa GPT genérico
       const reply = await responderConGPT(userId, incoming);
       await msg.reply(reply);
       console.log(`📤 [Respuesta GPT] ${userId}: ${reply}`);
@@ -189,7 +162,7 @@ client.on('message', async msg => {
 // ----------------------------------------------------
 // 6. Inicialización del cliente WhatsApp y servidor HTTP dummy
 // ----------------------------------------------------
-console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Assistant/Modelo)…');
+console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Modelo genérico)…');
 console.log('🟢 [DEBUG] Antes de client.initialize()');
 client.initialize()
   .then(() => {
