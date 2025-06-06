@@ -62,6 +62,60 @@ const pendingMessages = new Map();  // Map<userId, Array<{message, timestamp, ms
 // Bloqueos para operaciones en threads
 const threadLocks = new Map(); // Map<threadId, boolean>
 
+// NUEVO: Sistema de caché para respuestas frecuentes
+const respuestasCacheadas = {
+  "cursos": {
+    palabrasClave: ["curso", "cursos", "capacitacion", "capacitaciones", "taller", "talleres"],
+    respuesta: "La Municipalidad de San Martín ofrece diversos cursos a través de la Escuela de Oficio Manuel Belgrano y el Punto Digital. Los cursos actuales incluyen: informática básica, diseño gráfico, programación, administración pública, y oficios varios. ¿Te interesa alguno en particular?"
+  },
+  "punto_digital": {
+    palabrasClave: ["punto digital", "puntodigital", "centro digital", "tecnologia"],
+    respuesta: "El Punto Digital de San Martín ofrece acceso gratuito a tecnología, internet y capacitaciones. Está ubicado en la sede municipal y funciona de lunes a viernes de 9:00 a 18:00. Ofrecen cursos de alfabetización digital, diseño, programación y más."
+  },
+  "artesanos": {
+    palabrasClave: ["artesano", "artesanos", "feria", "ferias", "artesania", "artesanias"],
+    respuesta: "La Feria de Artesanos de San Martín se realiza todos los fines de semana en la Plaza Central, de 10:00 a 19:00. Los artesanos interesados en participar pueden inscribirse en la Dirección de Cultura (Edificio Municipal, 2° piso) de lunes a viernes de 8:00 a 14:00."
+  },
+  "escuela_belgrano": {
+    palabrasClave: ["belgrano", "manuel belgrano", "escuela de oficio", "escuela oficio"],
+    respuesta: "La Escuela de Oficio Manuel Belgrano ofrece formación gratuita en diversos oficios como carpintería, electricidad, plomería, costura, y gastronomía. Las inscripciones están abiertas todo el año en la sede municipal. Para más información, puede acercarse personalmente o llamar a la Dirección de Educación."
+  }
+};
+
+// NUEVO: Función para buscar respuesta cacheada
+function buscarRespuestaCacheada(mensaje) {
+  const mensajeLower = mensaje.toLowerCase();
+  
+  for (const [clave, datos] of Object.entries(respuestasCacheadas)) {
+    if (datos.palabrasClave.some(palabra => mensajeLower.includes(palabra))) {
+      console.log(`🔍 [Caché] Encontrada respuesta cacheada para: ${clave}`);
+      return datos.respuesta;
+    }
+  }
+  
+  return null;
+}
+
+// NUEVO: Límites de tiempo adaptativos
+const TIMEOUT_SIMPLE = 15;    // 15 segundos para consultas simples
+const TIMEOUT_NORMAL = 30;    // 30 segundos para consultas normales
+const TIMEOUT_COMPLEJO = 45;  // 45 segundos para consultas complejas
+
+// NUEVO: Función para determinar la complejidad de una consulta
+function determinarComplejidad(mensaje) {
+  const longitud = mensaje.length;
+  const tienePreguntas = mensaje.includes('?');
+  const tieneMultiplesPreguntas = (mensaje.match(/\?/g) || []).length > 1;
+  
+  if (longitud < 20 && !tienePreguntas) {
+    return 'simple';
+  } else if (tieneMultiplesPreguntas || longitud > 100) {
+    return 'complejo';
+  } else {
+    return 'normal';
+  }
+}
+
 // Función para detectar si una consulta es simple
 function esConsultaSimple(mensaje) {
   // Lista de patrones de consultas simples
@@ -160,6 +214,52 @@ async function cancelarRunSeguro(threadId, runId) {
   }
 }
 
+// NUEVO: Función para limpiar threads antiguos
+async function limpiarThreadAntiguo(threadId) {
+  try {
+    // Obtener todos los mensajes del thread
+    const mensajes = await openai.beta.threads.messages.list(threadId);
+    
+    // Si hay más de 10 mensajes, crear un nuevo thread con un resumen
+    if (mensajes.data.length > 10) {
+      console.log(`🧹 [Limpieza] Thread ${threadId} tiene ${mensajes.data.length} mensajes, creando uno nuevo`);
+      
+      // Crear un nuevo thread
+      const nuevoThread = await openai.beta.threads.create();
+      
+      // Añadir un mensaje de resumen al nuevo thread
+      await openai.beta.threads.messages.create(nuevoThread.id, {
+        role: "user",
+        content: "Esta es una continuación de una conversación anterior sobre: " + 
+                 obtenerTemasConversacion(mensajes.data)
+      });
+      
+      return nuevoThread.id;
+    }
+    
+    return threadId;
+  } catch (error) {
+    console.error(`❌ [Error] Al limpiar thread antiguo:`, error);
+    return threadId;
+  }
+}
+
+// NUEVO: Función para extraer temas principales de la conversación
+function obtenerTemasConversacion(mensajes) {
+  // Implementación simplificada
+  const temas = new Set();
+  for (const mensaje of mensajes) {
+    if (mensaje.content && mensaje.content[0] && mensaje.content[0].text) {
+      const texto = mensaje.content[0].text.value.toLowerCase();
+      if (texto.includes("curso")) temas.add("cursos");
+      if (texto.includes("digital")) temas.add("punto digital");
+      if (texto.includes("artesano")) temas.add("artesanos");
+      if (texto.includes("belgrano")) temas.add("escuela de oficios");
+    }
+  }
+  return Array.from(temas).join(", ");
+}
+
 // Función para procesar mensajes pendientes
 async function procesarMensajesPendientes(userId) {
   // Verificar si hay mensajes pendientes
@@ -223,6 +323,35 @@ function limpiarRunsAbandonados() {
 // Ejecutar limpieza cada 5 minutos
 setInterval(limpiarRunsAbandonados, 5 * 60 * 1000);
 
+// NUEVO: Función para enviar respuesta progresiva
+async function enviarRespuestaProgresiva(msg, threadId, runId) {
+  try {
+    // Enviar mensaje inicial rápido
+    await msg.reply("Estoy preparando tu respuesta...");
+    
+    // Esperar un tiempo corto
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    // Verificar si el run sigue en proceso
+    const status = await verificarEstadoRun(threadId, runId);
+    
+    if (status !== "completed") {
+      // Intentar obtener una respuesta parcial
+      const mensajesParciales = await openai.beta.threads.messages.list(threadId);
+      const mensajesAsistente = mensajesParciales.data.filter(m => m.role === "assistant");
+      
+      if (mensajesAsistente.length > 0 && mensajesAsistente[0].content.length > 0) {
+        // Hay una respuesta parcial, enviarla
+        const respuestaParcial = "Aquí hay información preliminar mientras completo mi respuesta: " + 
+                                mensajesAsistente[0].content[0].text.value.substring(0, 100) + "...";
+        await msg.reply(respuestaParcial);
+      }
+    }
+  } catch (error) {
+    console.error("Error al enviar respuesta progresiva:", error);
+  }
+}
+
 // Función para enviar mensajes de estado durante esperas largas
 async function enviarEstadoProgresivo(msg, threadId, runId) {
   // Limpiar cualquier intervalo existente para este usuario
@@ -230,7 +359,8 @@ async function enviarEstadoProgresivo(msg, threadId, runId) {
     clearInterval(statusMessages.get(msg.from));
   }
   
-  const checkpoints = [15, 30, 60]; // segundos
+  // MODIFICADO: Checkpoints más frecuentes
+  const checkpoints = [10, 20, 30]; // segundos (antes era 15, 30, 60)
   let currentCheckpoint = 0;
   
   const intervalId = setInterval(async () => {
@@ -249,11 +379,11 @@ async function enviarEstadoProgresivo(msg, threadId, runId) {
       }
       
       // Enviar mensaje de estado
-      if (checkpoints[currentCheckpoint] === 15) {
+      if (checkpoints[currentCheckpoint] === 10) {
         await msg.reply("Estoy procesando tu consulta, esto puede tomar un momento...");
-      } else if (checkpoints[currentCheckpoint] === 30) {
+      } else if (checkpoints[currentCheckpoint] === 20) {
         await msg.reply("Tu consulta es compleja, sigo trabajando en ella...");
-      } else if (checkpoints[currentCheckpoint] === 60) {
+      } else if (checkpoints[currentCheckpoint] === 30) {
         await msg.reply("Esta consulta está tomando más tiempo de lo habitual, pero sigo procesándola. Gracias por tu paciencia.");
       }
       
@@ -263,10 +393,30 @@ async function enviarEstadoProgresivo(msg, threadId, runId) {
       clearInterval(intervalId);
       statusMessages.delete(msg.from);
     }
-  }, 1000 * 15); // Verificar cada 15 segundos
+  }, 1000 * 10); // Verificar cada 10 segundos (antes era 15)
   
   statusMessages.set(msg.from, intervalId);
   return intervalId;
+}
+
+// NUEVO: Función para responder rápidamente a consultas simples
+async function responderConsultaSimple(message) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: 'system', content: 'Responde de forma muy breve y concisa.' },
+        { role: 'user', content: message }
+      ],
+      temperature: 0.3,
+      max_tokens: 50
+    });
+    
+    return response.choices[0]?.message?.content?.trim();
+  } catch (error) {
+    console.error('Error en respuesta rápida:', error);
+    return null;
+  }
 }
 
 // Función para reintentar una consulta que falló por timeout
@@ -303,10 +453,12 @@ async function reintentarConsulta(msg, threadId, runId, message) {
     // Esperar un momento para asegurar que el run anterior se haya cancelado completamente
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Crear un nuevo run
+    // MODIFICADO: Crear un nuevo run con parámetros optimizados
     console.log(`🆕 [Reintento] Creando nuevo run en thread ${threadId}`);
     const newRun = await openai.beta.threads.runs.create(threadId, {
-      assistant_id: OPENAI_ASSISTANT_ID
+      assistant_id: OPENAI_ASSISTANT_ID,
+      temperature: 0.3,  // Valor más bajo para respuestas más deterministas y rápidas
+      max_tokens: 300    // Limitar longitud para respuestas más rápidas
     });
     
     // Registrar el run activo
@@ -316,13 +468,16 @@ async function reintentarConsulta(msg, threadId, runId, message) {
       timestamp: Date.now()
     });
     
+    // NUEVO: Enviar respuesta progresiva
+    enviarRespuestaProgresiva(msg, threadId, newRun.id);
+    
     // Iniciar mensajes de estado para el nuevo run
     enviarEstadoProgresivo(msg, threadId, newRun.id);
     
-    // Esperar con timeout extendido
+    // MODIFICADO: Esperar con timeout más corto
     let runStatus = await verificarEstadoRun(threadId, newRun.id);
     let attempts = 0;
-    const extendedTimeout = 90; // 90 segundos para el reintento
+    const extendedTimeout = 45; // 45 segundos para el reintento (antes era 90)
     
     while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < extendedTimeout) {
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -394,6 +549,22 @@ async function responderConGPT(userId, message, msg) {
   }
 
   try {
+    // NUEVO: Verificar si hay una respuesta cacheada
+    const respuestaCacheada = buscarRespuestaCacheada(message);
+    if (respuestaCacheada) {
+      console.log(`⚡ [Caché] Usando respuesta cacheada para ${userId}`);
+      return respuestaCacheada;
+    }
+    
+    // NUEVO: Para consultas muy simples, intentar respuesta rápida
+    if (esConsultaSimple(message)) {
+      console.log(`⚡ [Rápida] Intentando respuesta rápida para ${userId}`);
+      const respuestaRapida = await responderConsultaSimple(message);
+      if (respuestaRapida) {
+        return respuestaRapida;
+      }
+    }
+
     // Si existe Assistant ID, lo usamos
     if (OPENAI_ASSISTANT_ID) {
       // Obtener o crear un thread para este usuario
@@ -404,6 +575,10 @@ async function responderConGPT(userId, message, msg) {
         chatThreads.set(userId, threadId);
         // Inicializar el estado de bloqueo
         threadLocks.set(threadId, false);
+      } else {
+        // NUEVO: Limpiar thread si es necesario
+        threadId = await limpiarThreadAntiguo(threadId);
+        chatThreads.set(userId, threadId);
       }
 
       // Verificar si el thread está bloqueado
@@ -449,11 +624,14 @@ async function responderConGPT(userId, message, msg) {
         }
       }
 
-      // Ejecutar el assistant en el thread
+      // MODIFICADO: Crear run con parámetros optimizados
       console.log(`🆕 [Respuesta] Creando nuevo run en thread ${threadId}`);
-      const run = await openai.beta.threads.runs.create(threadId, {
-        assistant_id: OPENAI_ASSISTANT_ID
-      });
+      const runParams = {
+        assistant_id: OPENAI_ASSISTANT_ID,
+        temperature: 0.3,  // Valor más bajo para respuestas más deterministas y rápidas
+        max_tokens: 300    // Limitar longitud para respuestas más rápidas
+      };
+      const run = await openai.beta.threads.runs.create(threadId, runParams);
       
       // Registrar el run activo
       activeRuns.set(userId, {
@@ -462,12 +640,21 @@ async function responderConGPT(userId, message, msg) {
         timestamp: Date.now()
       });
 
-      // Determinar si es una consulta simple o compleja
-      const isSimpleQuery = esConsultaSimple(message);
-      const maxAttempts = isSimpleQuery ? 30 : 60; // 30 segundos para consultas simples, 60 para complejas
+      // MODIFICADO: Determinar timeout según complejidad
+      const complejidad = determinarComplejidad(message);
+      const timeout = complejidad === 'simple' ? TIMEOUT_SIMPLE : 
+                      complejidad === 'complejo' ? TIMEOUT_COMPLEJO : 
+                      TIMEOUT_NORMAL;
+      
+      console.log(`⏱️ [Timeout] Usando timeout ${timeout}s para consulta de complejidad ${complejidad}`);
+      
+      // NUEVO: Enviar respuesta progresiva para consultas no simples
+      if (complejidad !== 'simple') {
+        enviarRespuestaProgresiva(msg, threadId, run.id);
+      }
       
       // Para consultas complejas, iniciar mensajes de estado
-      if (!isSimpleQuery) {
+      if (complejidad === 'complejo') {
         enviarEstadoProgresivo(msg, threadId, run.id);
       }
 
@@ -475,7 +662,7 @@ async function responderConGPT(userId, message, msg) {
       let runStatus = await verificarEstadoRun(threadId, run.id);
       let attempts = 0;
       
-      while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < maxAttempts) {
+      while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < timeout) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         runStatus = await verificarEstadoRun(threadId, run.id);
         attempts++;
@@ -495,7 +682,7 @@ async function responderConGPT(userId, message, msg) {
       
       if (runStatus !== "completed") {
         // Si es una consulta simple, reintentar automáticamente
-        if (isSimpleQuery) {
+        if (complejidad === 'simple') {
           await msg.reply('Esta consulta está tomando más tiempo de lo esperado. Estoy reintentando...');
           return await reintentarConsulta(msg, threadId, run.id, message);
         }
@@ -530,8 +717,8 @@ async function responderConGPT(userId, message, msg) {
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: message }
       ],
-      temperature: 0.5,
-      max_tokens: 400
+      temperature: 0.3,  // MODIFICADO: Valor más bajo para respuestas más rápidas
+      max_tokens: 300    // MODIFICADO: Limitar longitud para respuestas más rápidas
     });
 
     return response.choices[0]?.message?.content?.trim() ||
@@ -566,6 +753,15 @@ async function responderConGPT(userId, message, msg) {
 
 // Función para procesar mensajes con manejo de concurrencia
 async function procesarMensaje(userId, message, msgObj) {
+  // NUEVO: Verificar si hay una respuesta cacheada
+  const respuestaCacheada = buscarRespuestaCacheada(message);
+  if (respuestaCacheada) {
+    console.log(`⚡ [Caché] Respondiendo inmediatamente a ${userId}`);
+    await msgObj.reply(respuestaCacheada);
+    console.log(`📤 [Respuesta Caché] ${userId}: ${respuestaCacheada.substring(0, 50)}...`);
+    return;
+  }
+  
   // Verificar si hay un run activo para este usuario
   if (tieneRunActivo(userId)) {
     console.log(`⏳ [Encolando] Mensaje de ${userId} mientras hay un run activo`);
@@ -607,6 +803,17 @@ async function procesarMensaje(userId, message, msgObj) {
   
   // Si no hay run activo ni thread bloqueado, procesar normalmente
   try {
+    // NUEVO: Para consultas muy simples, intentar respuesta rápida
+    if (esConsultaSimple(message)) {
+      console.log(`⚡ [Rápida] Intentando respuesta rápida para ${userId}`);
+      const respuestaRapida = await responderConsultaSimple(message);
+      if (respuestaRapida) {
+        await msgObj.reply(respuestaRapida);
+        console.log(`📤 [Respuesta Rápida] ${userId}: ${respuestaRapida.substring(0, 50)}...`);
+        return;
+      }
+    }
+    
     // Llamar a GPT (Assistant)
     const reply = await responderConGPT(userId, message, msgObj);
     await msgObj.reply(reply);
