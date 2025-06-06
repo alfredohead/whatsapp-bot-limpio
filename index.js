@@ -1,4 +1,5 @@
-// index.js: Conexión definitiva al Assistant en OpenAI
+// index.js: Bot de WhatsApp optimizado - Solo Asistente de OpenAI
+// Versión optimizada con mejoras de velocidad y estabilidad
 
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -6,12 +7,12 @@ const qrcode = require('qrcode-terminal');
 const { OpenAI } = require('openai');
 
 // ----------------------------------------------------
-// 1. Leer variables de entorno
+// 1. Configuración de variables de entorno
 // ----------------------------------------------------
 const OPENAI_API_KEY      = process.env.OPENAI_API_KEY;
 const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
-// Debug: confirmar que la variable se cargó
+// Debug: confirmar que las variables se cargaron
 console.log('🟣 [DEBUG ENV] OPENAI_ASSISTANT_ID =', OPENAI_ASSISTANT_ID);
 
 // Inicializar cliente de OpenAI
@@ -22,14 +23,29 @@ if (OPENAI_API_KEY) {
   if (OPENAI_ASSISTANT_ID) {
     console.log(`✅ [OpenAI] Assistant ID configurado: ${OPENAI_ASSISTANT_ID}`);
   } else {
-    console.warn('⚠️ [OpenAI] No se encontró OPENAI_ASSISTANT_ID en env. Se usará fallback a modelo genérico.');
+    console.warn('⚠️ [OpenAI] No se encontró OPENAI_ASSISTANT_ID en env. Se usará fallback.');
   }
 } else {
-  console.warn('⚠️ [OpenAI] OPENAI_API_KEY no configurada. El servicio de GPT no funcionará.');
+  console.warn('⚠️ [OpenAI] OPENAI_API_KEY no configurada. El servicio no funcionará.');
 }
 
 // ----------------------------------------------------
-// 2. Configuración de WhatsApp (Puppeteer flags para Fly.io)
+// 2. Configuración optimizada para velocidad y estabilidad
+// ----------------------------------------------------
+const TIMEOUT_DEFAULT = 30;        // 30 segundos - optimizado para velocidad
+const TIMEOUT_REINTENTO = 20;      // 20 segundos para reintentos
+const MAX_REINTENTOS = 2;          // Máximo 2 reintentos por mensaje
+const INTERVALO_LIMPIEZA = 3 * 60 * 1000; // Limpiar cada 3 minutos
+
+// Configuración optimizada del asistente
+const ASSISTANT_CONFIG = {
+  temperature: 0.5,     // Equilibrio óptimo entre velocidad y calidad
+  max_tokens: 400,      // Respuestas completas pero eficientes
+  timeout: 25000        // Timeout interno de 25 segundos
+};
+
+// ----------------------------------------------------
+// 3. Configuración de WhatsApp
 // ----------------------------------------------------
 const client = new Client({
   puppeteer: {
@@ -45,99 +61,30 @@ const client = new Client({
 });
 
 // ----------------------------------------------------
-// 3. Variables globales
+// 4. Variables globales
 // ----------------------------------------------------
-const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Dirección Programas Nacionales). Responde con claridad y brevedad.`;
-const chatThreads      = new Map();   // Map<userId, threadId>
-const humanModeUsers   = new Set();   // Set<userId> usuarios en modo "operador humano"
-const userFaileds      = new Map();   // Map<userId, número de intentos fallidos
-const statusMessages   = new Map();   // Map<userId, intervalId> para mensajes de estado
+const SYSTEM_PROMPT = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Dirección Programas Nacionales). Responde con claridad y brevedad.`;
+
+const chatThreads = new Map();      // Map<userId, threadId>
+const humanModeUsers = new Set();   // Set<userId> usuarios en modo "operador humano"
+const userFaileds = new Map();      // Map<userId, número de intentos fallidos>
+const statusMessages = new Map();   // Map<userId, intervalId> para mensajes de estado
 
 // Mapa para rastrear threads con runs activos
-const activeRuns = new Map();  // Map<userId, {runId, threadId, timestamp}>
+const activeRuns = new Map();       // Map<userId, {runId, threadId, timestamp}>
 
 // Cola de mensajes pendientes por usuario
 const pendingMessages = new Map();  // Map<userId, Array<{message, timestamp, msgObj}>>
 
 // Bloqueos para operaciones en threads
-const threadLocks = new Map(); // Map<threadId, boolean>
+const threadLocks = new Map();      // Map<threadId, boolean>
 
-// NUEVO: Sistema de caché para respuestas frecuentes
-const respuestasCacheadas = {
-  "cursos": {
-    palabrasClave: ["curso", "cursos", "capacitacion", "capacitaciones", "taller", "talleres"],
-    respuesta: "La Municipalidad de San Martín ofrece diversos cursos a través de la Escuela de Oficio Manuel Belgrano y el Punto Digital. Los cursos actuales incluyen: informática básica, diseño gráfico, programación, administración pública, y oficios varios (carpintería, electricidad, plomería, costura, y gastronomía). ¿Te interesa alguno en particular?"
-  },
-  "punto_digital": {
-    palabrasClave: ["punto digital", "puntodigital", "centro digital", "tecnologia"],
-    respuesta: "El Punto Digital de San Martín ofrece acceso gratuito a tecnología, internet y capacitaciones. Está ubicado Malvinas Argentinas y Lateral Norte Acceso Este., General San Martín, Argentina y funciona de lunes a viernes de 9:00 a 18:00. Ofrecen cursos de alfabetización digital, diseño, programación y más."
-  },
-  "artesanos": {
-    palabrasClave: ["artesano", "artesanos", "feria", "ferias", "artesania", "artesanias"],
-    respuesta: "La Feria de Artesanos de San Martín se realiza dos veces al mes, los fines de semana en la plazoleta Sartmiento. Los artesanos interesados en participar pueden inscribirse en la Dirección de Programas Nacionales (Economía Social, Ruta 7 Lateral Sur y Carril San Pedro PASIP Palmira San Martín Mendoza - mail economia.social@sanmartinmza.gob.ar Tel: 2634259744 de lunes a viernes de 8:00 a 13:00."
-  },
-  "escuela_belgrano": {
-    palabrasClave: ["belgrano", "manuel belgrano", "escuela de oficio", "escuela oficio"],
-    respuesta: "La Escuela de Oficio Manuel Belgrano ofrece formación gratuita en diversos oficios como carpintería, electricidad, plomería, costura, y gastronomía, etc. Consulta inscripciones Malvinas Argentinas y Lateral Norte San Martín Mendoza - Tel 2634210261 - Mail: escuelasuperiordeoficios@gmail.com "
-  }
-};
-
-// NUEVO: Función para buscar respuesta cacheada
-function buscarRespuestaCacheada(mensaje) {
-  const mensajeLower = mensaje.toLowerCase();
-  
-  for (const [clave, datos] of Object.entries(respuestasCacheadas)) {
-    if (datos.palabrasClave.some(palabra => mensajeLower.includes(palabra))) {
-      console.log(`🔍 [Caché] Encontrada respuesta cacheada para: ${clave}`);
-      return datos.respuesta;
-    }
-  }
-  
-  return null;
-}
-
-// NUEVO: Límites de tiempo adaptativos
-const TIMEOUT_SIMPLE = 15;    // 15 segundos para consultas simples
-const TIMEOUT_NORMAL = 30;    // 30 segundos para consultas normales
-const TIMEOUT_COMPLEJO = 45;  // 45 segundos para consultas complejas
-
-// NUEVO: Función para determinar la complejidad de una consulta
-function determinarComplejidad(mensaje) {
-  const longitud = mensaje.length;
-  const tienePreguntas = mensaje.includes('?');
-  const tieneMultiplesPreguntas = (mensaje.match(/\?/g) || []).length > 1;
-  
-  if (longitud < 20 && !tienePreguntas) {
-    return 'simple';
-  } else if (tieneMultiplesPreguntas || longitud > 100) {
-    return 'complejo';
-  } else {
-    return 'normal';
-  }
-}
-
-// Función para detectar si una consulta es simple
-function esConsultaSimple(mensaje) {
-  // Lista de patrones de consultas simples
-  const patronesSimples = [
-    /^hola+/i,
-    /^buenos días/i,
-    /^buenas tardes/i,
-    /^buenas noches/i,
-    /^gracias/i,
-    /^ok/i,
-    /^sí/i,
-    /^no/i,
-    /^ayuda/i
-  ];
-  
-  // Verificar si el mensaje coincide con algún patrón simple
-  return patronesSimples.some(patron => patron.test(mensaje)) || mensaje.length < 15;
-}
+// ----------------------------------------------------
+// 5. Funciones utilitarias
+// ----------------------------------------------------
 
 // Función para verificar si un chat es grupal
 function esGrupoWhatsApp(chatId) {
-  // Los IDs de grupos de WhatsApp terminan con @g.us
   return chatId.endsWith('@g.us');
 }
 
@@ -187,7 +134,6 @@ async function verificarEstadoRun(threadId, runId) {
 // Función para cancelar un run de forma segura
 async function cancelarRunSeguro(threadId, runId) {
   try {
-    // Verificar primero si el run sigue activo
     const status = await verificarEstadoRun(threadId, runId);
     if (status !== "completed" && status !== "cancelled" && status !== "failed" && status !== "error") {
       console.log(`🛑 [Cancelando] Run ${runId} en thread ${threadId}`);
@@ -214,20 +160,49 @@ async function cancelarRunSeguro(threadId, runId) {
   }
 }
 
-// NUEVO: Función para limpiar threads antiguos
+// ----------------------------------------------------
+// 6. Sistema de priorización y optimización
+// ----------------------------------------------------
+
+// Sistema de priorización para mejorar velocidad
+function esMensajePrioritario(mensaje) {
+  const palabrasPrioridad = [
+    'urgente', 'emergencia', 'problema', 'error', 'ayuda',
+    'inscripcion', 'inscripción', 'horario', 'telefono', 'teléfono'
+  ];
+  
+  const mensajeLower = mensaje.toLowerCase();
+  return palabrasPrioridad.some(palabra => mensajeLower.includes(palabra));
+}
+
+// Función para procesar mensajes prioritarios primero
+async function procesarColaPrioritaria(userId) {
+  if (!pendingMessages.has(userId)) return false;
+  
+  const mensajes = pendingMessages.get(userId);
+  const indicePrioritario = mensajes.findIndex(msg => esMensajePrioritario(msg.message));
+  
+  if (indicePrioritario !== -1) {
+    // Mover mensaje prioritario al frente
+    const [mensajePrioritario] = mensajes.splice(indicePrioritario, 1);
+    mensajes.unshift(mensajePrioritario);
+    console.log(`⚡ [Prioridad] Mensaje prioritario movido al frente para ${userId}`);
+    return true;
+  }
+  
+  return false;
+}
+
+// Función para limpiar threads antiguos
 async function limpiarThreadAntiguo(threadId) {
   try {
-    // Obtener todos los mensajes del thread
     const mensajes = await openai.beta.threads.messages.list(threadId);
     
-    // Si hay más de 10 mensajes, crear un nuevo thread con un resumen
     if (mensajes.data.length > 10) {
       console.log(`🧹 [Limpieza] Thread ${threadId} tiene ${mensajes.data.length} mensajes, creando uno nuevo`);
       
-      // Crear un nuevo thread
       const nuevoThread = await openai.beta.threads.create();
       
-      // Añadir un mensaje de resumen al nuevo thread
       await openai.beta.threads.messages.create(nuevoThread.id, {
         role: "user",
         content: "Esta es una continuación de una conversación anterior sobre: " + 
@@ -244,9 +219,8 @@ async function limpiarThreadAntiguo(threadId) {
   }
 }
 
-// NUEVO: Función para extraer temas principales de la conversación
+// Función para extraer temas principales de la conversación
 function obtenerTemasConversacion(mensajes) {
-  // Implementación simplificada
   const temas = new Set();
   for (const mensaje of mensajes) {
     if (mensaje.content && mensaje.content[0] && mensaje.content[0].text) {
@@ -260,59 +234,43 @@ function obtenerTemasConversacion(mensajes) {
   return Array.from(temas).join(", ");
 }
 
-// Función para procesar mensajes pendientes
-async function procesarMensajesPendientes(userId) {
-  // Verificar si hay mensajes pendientes
-  if (pendingMessages.has(userId) && pendingMessages.get(userId).length > 0) {
-    // Verificar que no haya un run activo
-    if (tieneRunActivo(userId)) {
-      console.log(`⏳ [Cola] Usuario ${userId} tiene un run activo, posponiendo procesamiento de cola`);
-      return;
-    }
-    
-    console.log(`📋 [Cola] Procesando mensaje pendiente para ${userId}`);
-    const nextMessage = pendingMessages.get(userId).shift();
-    
-    // Si la cola queda vacía, eliminarla
-    if (pendingMessages.get(userId).length === 0) {
+// Función para optimizar memoria y rendimiento
+function optimizarSistema() {
+  const ahora = Date.now();
+  
+  // Limpiar mensajes pendientes antiguos (más de 10 minutos)
+  for (const [userId, mensajes] of pendingMessages.entries()) {
+    const mensajesFiltrados = mensajes.filter(msg => ahora - msg.timestamp < 10 * 60 * 1000);
+    if (mensajesFiltrados.length === 0) {
       pendingMessages.delete(userId);
-    }
-    
-    // Procesar el siguiente mensaje
-    try {
-      // Llamar a GPT (Assistant)
-      const reply = await responderConGPT(userId, nextMessage.message, nextMessage.msgObj);
-      await nextMessage.msgObj.reply(reply);
-      console.log(`📤 [Respuesta GPT] ${userId}: ${reply.substring(0, 50)}...`);
-      userFaileds.set(userId, 0);
-    } catch (error) {
-      console.error('❌ [Error al procesar mensaje pendiente]', error);
-      const failed = userFaileds.get(userId) || 0;
-      userFaileds.set(userId, failed + 1);
-      await nextMessage.msgObj.reply('Lo siento, hubo un problema al procesar tu mensaje pendiente.');
+    } else {
+      pendingMessages.set(userId, mensajesFiltrados);
     }
   }
+  
+  // Limpiar fallos de usuario antiguos
+  for (const [userId, timestamp] of userFaileds.entries()) {
+    if (ahora - timestamp > 30 * 60 * 1000) { // 30 minutos
+      userFaileds.delete(userId);
+    }
+  }
+  
+  console.log(`🧹 [Optimización] Sistema optimizado. Memoria liberada.`);
 }
 
 // Función para limpiar runs abandonados
 function limpiarRunsAbandonados() {
   const ahora = Date.now();
-  const MAX_RUN_TIME = 5 * 60 * 1000; // 5 minutos
+  const MAX_RUN_TIME = 2 * 60 * 1000; // 2 minutos para mayor estabilidad
   
   for (const [userId, runInfo] of activeRuns.entries()) {
     if (ahora - runInfo.timestamp > MAX_RUN_TIME) {
       console.log(`🧹 [Limpieza] Run abandonado para ${userId}: ${runInfo.runId}`);
       
-      // Intentar cancelar el run
       cancelarRunSeguro(runInfo.threadId, runInfo.runId)
         .then(() => {
-          // Eliminar de la lista de activos
           activeRuns.delete(userId);
-          
-          // Desbloquear el thread
           desbloquearThread(runInfo.threadId);
-          
-          // Procesar mensajes pendientes si hay
           setTimeout(() => procesarMensajesPendientes(userId), 1000);
         })
         .catch(err => console.error('Error al limpiar run abandonado:', err));
@@ -320,102 +278,159 @@ function limpiarRunsAbandonados() {
   }
 }
 
-// Ejecutar limpieza cada 5 minutos
-setInterval(limpiarRunsAbandonados, 5 * 60 * 1000);
+// ----------------------------------------------------
+// 7. Función principal para responder con GPT Assistant
+// ----------------------------------------------------
 
-// NUEVO: Función para enviar respuesta progresiva
-async function enviarRespuestaProgresiva(msg, threadId, runId) {
-  try {
-    // Enviar mensaje inicial rápido
-    await msg.reply("Estoy preparando tu respuesta...");
-    
-    // Esperar un tiempo corto
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    // Verificar si el run sigue en proceso
-    const status = await verificarEstadoRun(threadId, runId);
-    
-    if (status !== "completed") {
-      // Intentar obtener una respuesta parcial
-      const mensajesParciales = await openai.beta.threads.messages.list(threadId);
-      const mensajesAsistente = mensajesParciales.data.filter(m => m.role === "assistant");
-      
-      if (mensajesAsistente.length > 0 && mensajesAsistente[0].content.length > 0) {
-        // Hay una respuesta parcial, enviarla
-        const respuestaParcial = "Aquí hay información preliminar mientras completo mi respuesta: " + 
-                                mensajesAsistente[0].content[0].text.value.substring(0, 100) + "...";
-        await msg.reply(respuestaParcial);
-      }
-    }
-  } catch (error) {
-    console.error("Error al enviar respuesta progresiva:", error);
+async function responderConGPT(userId, message, msg) {
+  if (!openai) {
+    return 'Lo siento, el servicio de asistencia no está disponible en este momento.';
   }
-}
 
-// Función para enviar mensajes de estado durante esperas largas
-async function enviarEstadoProgresivo(msg, threadId, runId) {
-  // Limpiar cualquier intervalo existente para este usuario
-  if (statusMessages.has(msg.from)) {
-    clearInterval(statusMessages.get(msg.from));
-  }
-  
-  // MODIFICADO: Checkpoints más frecuentes
-  const checkpoints = [10, 20, 30]; // segundos (antes era 15, 30, 60)
-  let currentCheckpoint = 0;
-  
-  const intervalId = setInterval(async () => {
-    if (currentCheckpoint >= checkpoints.length) {
-      clearInterval(intervalId);
-      return;
-    }
-    
-    // Verificar si el run sigue en proceso
-    try {
-      const status = await verificarEstadoRun(threadId, runId);
-      if (status === "completed" || status === "failed" || status === "cancelled" || status === "error") {
-        clearInterval(intervalId);
-        statusMessages.delete(msg.from);
-        return;
-      }
-      
-      // Enviar mensaje de estado
-      if (checkpoints[currentCheckpoint] === 10) {
-        await msg.reply("Estoy procesando tu consulta, esto puede tomar un momento...");
-      } else if (checkpoints[currentCheckpoint] === 20) {
-        await msg.reply("Tu consulta es compleja, sigo trabajando en ella...");
-      } else if (checkpoints[currentCheckpoint] === 30) {
-        await msg.reply("Esta consulta está tomando más tiempo de lo habitual, pero sigo procesándola. Gracias por tu paciencia.");
-      }
-      
-      currentCheckpoint++;
-    } catch (error) {
-      console.error("Error al verificar estado:", error);
-      clearInterval(intervalId);
-      statusMessages.delete(msg.from);
-    }
-  }, 1000 * 10); // Verificar cada 10 segundos (antes era 15)
-  
-  statusMessages.set(msg.from, intervalId);
-  return intervalId;
-}
-
-// NUEVO: Función para responder rápidamente a consultas simples
-async function responderConsultaSimple(message) {
   try {
+    // Si existe Assistant ID, usarlo
+    if (OPENAI_ASSISTANT_ID) {
+      // Obtener o crear un thread para este usuario
+      let threadId = chatThreads.get(userId);
+      if (!threadId) {
+        const thread = await openai.beta.threads.create();
+        threadId = thread.id;
+        chatThreads.set(userId, threadId);
+        threadLocks.set(threadId, false);
+      } else {
+        // Limpiar thread si es necesario
+        threadId = await limpiarThreadAntiguo(threadId);
+        chatThreads.set(userId, threadId);
+      }
+
+      // Verificar si el thread está bloqueado
+      if (threadEstaBloqueado(threadId)) {
+        console.log(`⚠️ [Respuesta] Thread ${threadId} bloqueado, esperando...`);
+        const desbloqueado = await esperarDesbloqueoThread(threadId);
+        if (!desbloqueado) {
+          console.log(`❌ [Respuesta] Thread ${threadId} sigue bloqueado, abortando`);
+          return 'Lo siento, el sistema está ocupado. Por favor, intenta nuevamente en unos momentos.';
+        }
+      }
+      
+      // Bloquear el thread durante la operación
+      bloquearThread(threadId);
+
+      try {
+        // Verificar si hay un run activo para este usuario
+        if (tieneRunActivo(userId)) {
+          console.log(`⚠️ [Respuesta] Usuario ${userId} ya tiene un run activo, cancelando primero`);
+          const runActivo = activeRuns.get(userId);
+          await cancelarRunSeguro(runActivo.threadId, runActivo.runId);
+          activeRuns.delete(userId);
+        }
+
+        // Añadir el mensaje del usuario al thread
+        await openai.beta.threads.messages.create(threadId, {
+          role: "user",
+          content: message
+        });
+
+        console.log(`🆕 [Respuesta] Creando nuevo run optimizado en thread ${threadId}`);
+        const runParams = {
+          assistant_id: OPENAI_ASSISTANT_ID,
+          temperature: ASSISTANT_CONFIG.temperature,
+          max_tokens: ASSISTANT_CONFIG.max_tokens
+        };
+        const run = await openai.beta.threads.runs.create(threadId, runParams);
+        
+        // Registrar el run activo
+        activeRuns.set(userId, {
+          runId: run.id,
+          threadId: threadId,
+          timestamp: Date.now()
+        });
+
+        // Usar timeout optimizado unificado
+        const timeout = TIMEOUT_DEFAULT;
+        console.log(`⏱️ [Timeout] Usando timeout optimizado de ${timeout}s`);
+        
+        // Esperar a que se complete el run
+        let runStatus = await verificarEstadoRun(threadId, run.id);
+        let attempts = 0;
+
+        while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < timeout) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          runStatus = await verificarEstadoRun(threadId, run.id);
+          attempts++;
+        }
+
+        // Eliminar el run activo
+        activeRuns.delete(userId);
+        
+        // Desbloquear el thread
+        desbloquearThread(threadId);
+
+        if (runStatus !== "completed") {
+          // Cancelar el run si no se completó
+          await cancelarRunSeguro(threadId, run.id);
+          
+          // Intentar reintento si es necesario
+          console.log(`⚠️ [Timeout] Run ${run.id} no completado en ${timeout}s, iniciando reintento`);
+          const respuestaReintento = await reintentarConsulta(msg, threadId, run.id, message);
+          setTimeout(() => procesarMensajesPendientes(userId), 1000);
+          return respuestaReintento;
+        }
+
+        // Obtener los mensajes del thread
+        const messages = await openai.beta.threads.messages.list(threadId);
+        const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
+        
+        setTimeout(() => procesarMensajesPendientes(userId), 1000);
+        
+        if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
+          return assistantMessages[0].content[0].text.value;
+        } else {
+          return 'Disculpa, no pude procesar tu consulta.';
+        }
+
+      } catch (error) {
+        console.error('❌ [Error en run]:', error);
+        activeRuns.delete(userId);
+        desbloquearThread(threadId);
+        throw error;
+      }
+    }
+
+    // Fallback optimizado (solo si falta OPENAI_ASSISTANT_ID)
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
-        { role: 'system', content: 'Responde de forma muy breve y concisa.' },
+        { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: message }
       ],
-      temperature: 0.3,
-      max_tokens: 50
+      temperature: ASSISTANT_CONFIG.temperature,
+      max_tokens: ASSISTANT_CONFIG.max_tokens
     });
-    
-    return response.choices[0]?.message?.content?.trim();
+
+    return response.choices[0]?.message?.content?.trim() ||
+           'Disculpa, no pude procesar tu consulta.';
+
   } catch (error) {
-    console.error('Error en respuesta rápida:', error);
-    return null;
+    console.error('❌ [GPT] Error:', error);
+    
+    // Limpiar en caso de error
+    const threadId = chatThreads.get(userId);
+    if (threadId && threadEstaBloqueado(threadId)) {
+      desbloquearThread(threadId);
+    }
+    activeRuns.delete(userId);
+    
+    // Manejar errores específicos
+    if (error.status === 429) {
+      return 'Lo siento, estamos experimentando alta demanda. Por favor, intenta nuevamente en unos segundos.';
+    } else if (error.message && error.message.includes('timeout')) {
+      return 'Lo siento, la consulta está tomando demasiado tiempo. Por favor, intenta con una pregunta más específica.';
+    } else if (error.message && error.message.includes("already has an active run")) {
+      return 'Lo siento, el sistema está ocupado. Por favor, intenta nuevamente en unos momentos.';
+    }
+    
+    return 'Lo siento, ocurrió un error al procesar tu consulta.';
   }
 }
 
@@ -429,8 +444,7 @@ async function reintentarConsulta(msg, threadId, runId, message) {
       console.log(`⚠️ [Reintento] Thread ${threadId} bloqueado, esperando...`);
       const desbloqueado = await esperarDesbloqueoThread(threadId);
       if (!desbloqueado) {
-        console.log(`❌ [Reintento] Thread ${threadId} sigue bloqueado después de esperar, abortando`);
-        return 'Lo siento, el sistema está ocupado procesando otras consultas. Por favor, intenta nuevamente en unos momentos.';
+        return 'Lo siento, el sistema está ocupado. Por favor, intenta nuevamente en unos momentos.';
       }
     }
     
@@ -450,15 +464,15 @@ async function reintentarConsulta(msg, threadId, runId, message) {
       }
     }
     
-    // Esperar un momento para asegurar que el run anterior se haya cancelado completamente
+    // Esperar un momento para asegurar que el run anterior se haya cancelado
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // MODIFICADO: Crear un nuevo run con parámetros optimizados
-    console.log(`🆕 [Reintento] Creando nuevo run en thread ${threadId}`);
+    // Crear un nuevo run con parámetros optimizados para velocidad
+    console.log(`🆕 [Reintento] Creando nuevo run optimizado en thread ${threadId}`);
     const newRun = await openai.beta.threads.runs.create(threadId, {
       assistant_id: OPENAI_ASSISTANT_ID,
-      temperature: 0.3,  // Valor más bajo para respuestas más deterministas y rápidas
-      max_tokens: 300    // Limitar longitud para respuestas más rápidas
+      temperature: ASSISTANT_CONFIG.temperature,
+      max_tokens: ASSISTANT_CONFIG.max_tokens
     });
     
     // Registrar el run activo
@@ -468,27 +482,15 @@ async function reintentarConsulta(msg, threadId, runId, message) {
       timestamp: Date.now()
     });
     
-    // NUEVO: Enviar respuesta progresiva
-    enviarRespuestaProgresiva(msg, threadId, newRun.id);
-    
-    // Iniciar mensajes de estado para el nuevo run
-    enviarEstadoProgresivo(msg, threadId, newRun.id);
-    
-    // MODIFICADO: Esperar con timeout más corto
+    // Esperar con timeout optimizado para reintentos
     let runStatus = await verificarEstadoRun(threadId, newRun.id);
     let attempts = 0;
-    const extendedTimeout = 45; // 45 segundos para el reintento (antes era 90)
+    const extendedTimeout = TIMEOUT_REINTENTO; // Timeout optimizado para reintentos
     
     while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < extendedTimeout) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       runStatus = await verificarEstadoRun(threadId, newRun.id);
       attempts++;
-    }
-    
-    // Limpiar intervalo de mensajes de estado
-    if (statusMessages.has(msg.from)) {
-      clearInterval(statusMessages.get(msg.from));
-      statusMessages.delete(msg.from);
     }
     
     // Eliminar el run activo
@@ -501,7 +503,6 @@ async function reintentarConsulta(msg, threadId, runId, message) {
       // Cancelar el run si no se completó
       await cancelarRunSeguro(threadId, newRun.id);
       
-      // Procesar mensajes pendientes después de liberar el thread
       setTimeout(() => procesarMensajesPendientes(msg.from), 1000);
       
       return 'Lo siento, esta consulta es demasiado compleja y está tomando mucho tiempo. ¿Podrías reformularla de manera más específica?';
@@ -511,7 +512,6 @@ async function reintentarConsulta(msg, threadId, runId, message) {
     const messages = await openai.beta.threads.messages.list(threadId);
     const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
     
-    // Procesar mensajes pendientes después de liberar el thread
     setTimeout(() => procesarMensajesPendientes(msg.from), 1000);
     
     if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
@@ -522,18 +522,13 @@ async function reintentarConsulta(msg, threadId, runId, message) {
   } catch (error) {
     console.error('❌ [Error en reintento]:', error);
     
-    // Eliminar el run activo en caso de error
     activeRuns.delete(msg.from);
-    
-    // Desbloquear el thread en caso de error
     desbloquearThread(threadId);
     
-    // Procesar mensajes pendientes después de liberar el thread
     setTimeout(() => procesarMensajesPendientes(msg.from), 1000);
     
-    // Manejar errores específicos
     if (error.message && error.message.includes("already has an active run")) {
-      return 'Lo siento, el sistema está ocupado procesando otra consulta. Por favor, intenta nuevamente en unos momentos.';
+      return 'Lo siento, el sistema está ocupado. Por favor, intenta nuevamente en unos momentos.';
     }
     
     return 'Lo siento, ocurrió un error al procesar tu consulta. Por favor, intenta con una pregunta diferente.';
@@ -541,226 +536,50 @@ async function reintentarConsulta(msg, threadId, runId, message) {
 }
 
 // ----------------------------------------------------
-// 4. Función para responder (usando API de Assistants)
+// 8. Función para procesar mensajes pendientes
 // ----------------------------------------------------
-async function responderConGPT(userId, message, msg) {
-  if (!openai) {
-    return 'Lo siento, el servicio de asistencia avanzada no está disponible en este momento.';
-  }
 
-  try {
-    // NUEVO: Verificar si hay una respuesta cacheada
-    const respuestaCacheada = buscarRespuestaCacheada(message);
-    if (respuestaCacheada) {
-      console.log(`⚡ [Caché] Usando respuesta cacheada para ${userId}`);
-      return respuestaCacheada;
+async function procesarMensajesPendientes(userId) {
+  // Verificar si hay mensajes pendientes
+  if (pendingMessages.has(userId) && pendingMessages.get(userId).length > 0) {
+    // Verificar que no haya un run activo
+    if (tieneRunActivo(userId)) {
+      console.log(`⏳ [Cola] Usuario ${userId} tiene un run activo, posponiendo procesamiento de cola`);
+      return;
     }
     
-    // NUEVO: Para consultas muy simples, intentar respuesta rápida
-    if (esConsultaSimple(message)) {
-      console.log(`⚡ [Rápida] Intentando respuesta rápida para ${userId}`);
-      const respuestaRapida = await responderConsultaSimple(message);
-      if (respuestaRapida) {
-        return respuestaRapida;
-      }
-    }
-
-    // Si existe Assistant ID, lo usamos
-    if (OPENAI_ASSISTANT_ID) {
-      // Obtener o crear un thread para este usuario
-      let threadId = chatThreads.get(userId);
-      if (!threadId) {
-        const thread = await openai.beta.threads.create();
-        threadId = thread.id;
-        chatThreads.set(userId, threadId);
-        // Inicializar el estado de bloqueo
-        threadLocks.set(threadId, false);
-      } else {
-        // NUEVO: Limpiar thread si es necesario
-        threadId = await limpiarThreadAntiguo(threadId);
-        chatThreads.set(userId, threadId);
-      }
-
-      // Verificar si el thread está bloqueado
-      if (threadEstaBloqueado(threadId)) {
-        console.log(`⚠️ [Respuesta] Thread ${threadId} bloqueado, esperando...`);
-        const desbloqueado = await esperarDesbloqueoThread(threadId);
-        if (!desbloqueado) {
-          console.log(`❌ [Respuesta] Thread ${threadId} sigue bloqueado después de esperar, abortando`);
-          return 'Lo siento, el sistema está ocupado procesando otras consultas. Por favor, intenta nuevamente en unos momentos.';
-        }
-      }
-      
-      // Bloquear el thread durante la operación
-      bloquearThread(threadId);
-
-      try {
-        // Verificar si hay un run activo para este usuario
-        if (tieneRunActivo(userId)) {
-          console.log(`⚠️ [Respuesta] Usuario ${userId} ya tiene un run activo, cancelando primero`);
-          const runActivo = activeRuns.get(userId);
-          await cancelarRunSeguro(runActivo.threadId, runActivo.runId);
-          activeRuns.delete(userId);
-          
-          // Esperar un momento para asegurar que el run anterior se haya cancelado completamente
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        // Añadir el mensaje del usuario al thread
-        await openai.beta.threads.messages.create(threadId, {
-          role: "user",
-          content: message
-        });
-      } catch (error) {
-        // Si el error es porque hay un run activo, manejarlo específicamente
-        if (error.message && error.message.includes("while a run") && error.message.includes("is active")) {
-          console.log(`⚠️ [Run Activo] No se pudo añadir mensaje para ${userId}, run activo detectado`);
-          desbloquearThread(threadId);
-          return 'Estoy procesando tu consulta anterior. Por favor, espera un momento antes de enviar un nuevo mensaje.';
-        } else {
-          // Si es otro tipo de error, relanzarlo
-          desbloquearThread(threadId);
-          throw error;
-        }
-      }
-
-      // MODIFICADO: Crear run con parámetros optimizados
-      console.log(`🆕 [Respuesta] Creando nuevo run en thread ${threadId}`);
-      const runParams = {
-        assistant_id: OPENAI_ASSISTANT_ID,
-        temperature: 0.3,  // Valor más bajo para respuestas más deterministas y rápidas
-        max_tokens: 300    // Limitar longitud para respuestas más rápidas
-      };
-      const run = await openai.beta.threads.runs.create(threadId, runParams);
-      
-      // Registrar el run activo
-      activeRuns.set(userId, {
-        runId: run.id,
-        threadId: threadId,
-        timestamp: Date.now()
-      });
-
-      // MODIFICADO: Determinar timeout según complejidad
-      const complejidad = determinarComplejidad(message);
-      const timeout = complejidad === 'simple' ? TIMEOUT_SIMPLE : 
-                      complejidad === 'complejo' ? TIMEOUT_COMPLEJO : 
-                      TIMEOUT_NORMAL;
-      
-      console.log(`⏱️ [Timeout] Usando timeout ${timeout}s para consulta de complejidad ${complejidad}`);
-      
-      // NUEVO: Enviar respuesta progresiva para consultas no simples
-      if (complejidad !== 'simple') {
-        enviarRespuestaProgresiva(msg, threadId, run.id);
-      }
-      
-      // Para consultas complejas, iniciar mensajes de estado
-      if (complejidad === 'complejo') {
-        enviarEstadoProgresivo(msg, threadId, run.id);
-      }
-
-      // Esperar a que termine la ejecución (con timeout)
-      let runStatus = await verificarEstadoRun(threadId, run.id);
-      let attempts = 0;
-      
-      while (runStatus !== "completed" && runStatus !== "failed" && runStatus !== "cancelled" && runStatus !== "error" && attempts < timeout) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        runStatus = await verificarEstadoRun(threadId, run.id);
-        attempts++;
-      }
-      
-      // Limpiar intervalo de mensajes de estado
-      if (statusMessages.has(userId)) {
-        clearInterval(statusMessages.get(userId));
-        statusMessages.delete(userId);
-      }
-      
-      // Eliminar el run activo
-      activeRuns.delete(userId);
-      
-      // Desbloquear el thread
-      desbloquearThread(threadId);
-      
-      if (runStatus !== "completed") {
-        // Si es una consulta simple, reintentar automáticamente
-        if (complejidad === 'simple') {
-          await msg.reply('Esta consulta está tomando más tiempo de lo esperado. Estoy reintentando...');
-          return await reintentarConsulta(msg, threadId, run.id, message);
-        }
-        
-        // Para consultas complejas, ofrecer reintento manual
-        await cancelarRunSeguro(threadId, run.id);
-        
-        // Procesar mensajes pendientes después de liberar el thread
-        setTimeout(() => procesarMensajesPendientes(userId), 1000);
-        
-        return 'Lo siento, la respuesta está tardando demasiado. Por favor, intenta reformular tu pregunta de manera más específica.';
-      }
-
-      // Obtener los mensajes del thread
-      const messages = await openai.beta.threads.messages.list(threadId);
-      const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
-      
-      // Procesar mensajes pendientes después de liberar el thread
-      setTimeout(() => procesarMensajesPendientes(userId), 1000);
-      
-      if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
-        return assistantMessages[0].content[0].text.value;
-      } else {
-        return 'Disculpa, no pude procesar tu consulta.';
-      }
-    }
-
-    // (Rama de fallback, solo si por alguna razón falta OPENAI_ASSISTANT_ID)
-    const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: message }
-      ],
-      temperature: 0.3,  // MODIFICADO: Valor más bajo para respuestas más rápidas
-      max_tokens: 300    // MODIFICADO: Limitar longitud para respuestas más rápidas
-    });
-
-    return response.choices[0]?.message?.content?.trim() ||
-           'Disculpa, no pude procesar tu consulta.';
-
-  } catch (error) {
-    console.error('❌ [GPT] Error:', error);
+    // Procesar cola prioritaria
+    await procesarColaPrioritaria(userId);
     
-    // Obtener el threadId para desbloquear en caso de error
-    const threadId = chatThreads.get(userId);
-    if (threadId && threadEstaBloqueado(threadId)) {
-      desbloquearThread(threadId);
+    console.log(`📋 [Cola] Procesando mensaje pendiente para ${userId}`);
+    const nextMessage = pendingMessages.get(userId).shift();
+    
+    // Si la cola queda vacía, eliminarla
+    if (pendingMessages.get(userId).length === 0) {
+      pendingMessages.delete(userId);
     }
     
-    // Eliminar el run activo en caso de error
-    activeRuns.delete(userId);
-    
-    // Manejar errores específicos
-    if (error.status === 429) {
-      return 'Lo siento, estamos experimentando alta demanda en este momento. Por favor, intenta nuevamente en unos segundos.';
-    } else if (error.message && error.message.includes('timeout')) {
-      return 'Lo siento, la consulta está tomando demasiado tiempo. Por favor, intenta con una pregunta más específica.';
-    } else if (error.message && error.message.includes("while a run") && error.message.includes("is active")) {
-      return 'Estoy procesando tu consulta anterior. Por favor, espera un momento antes de enviar un nuevo mensaje.';
-    } else if (error.message && error.message.includes("already has an active run")) {
-      return 'Lo siento, el sistema está ocupado procesando otra consulta. Por favor, intenta nuevamente en unos momentos.';
+    // Procesar el siguiente mensaje
+    try {
+      const reply = await responderConGPT(userId, nextMessage.message, nextMessage.msgObj);
+      await nextMessage.msgObj.reply(reply);
+      console.log(`📤 [Respuesta GPT] ${userId}: ${reply.substring(0, 50)}...`);
+      userFaileds.set(userId, 0);
+    } catch (error) {
+      console.error('❌ [Error al procesar mensaje pendiente]', error);
+      const failed = userFaileds.get(userId) || 0;
+      userFaileds.set(userId, failed + 1);
+      await nextMessage.msgObj.reply('Lo siento, hubo un problema al procesar tu mensaje pendiente.');
     }
-    
-    return 'Lo siento, ocurrió un error al procesar tu consulta.';
   }
 }
 
-// Función para procesar mensajes con manejo de concurrencia
+// ----------------------------------------------------
+// 9. Función para procesar mensajes con manejo de concurrencia
+// ----------------------------------------------------
+
 async function procesarMensaje(userId, message, msgObj) {
-  // NUEVO: Verificar si hay una respuesta cacheada
-  const respuestaCacheada = buscarRespuestaCacheada(message);
-  if (respuestaCacheada) {
-    console.log(`⚡ [Caché] Respondiendo inmediatamente a ${userId}`);
-    await msgObj.reply(respuestaCacheada);
-    console.log(`📤 [Respuesta Caché] ${userId}: ${respuestaCacheada.substring(0, 50)}...`);
-    return;
-  }
+  // Todos los mensajes van directamente al asistente de OpenAI
   
   // Verificar si hay un run activo para este usuario
   if (tieneRunActivo(userId)) {
@@ -803,18 +622,7 @@ async function procesarMensaje(userId, message, msgObj) {
   
   // Si no hay run activo ni thread bloqueado, procesar normalmente
   try {
-    // NUEVO: Para consultas muy simples, intentar respuesta rápida
-    if (esConsultaSimple(message)) {
-      console.log(`⚡ [Rápida] Intentando respuesta rápida para ${userId}`);
-      const respuestaRapida = await responderConsultaSimple(message);
-      if (respuestaRapida) {
-        await msgObj.reply(respuestaRapida);
-        console.log(`📤 [Respuesta Rápida] ${userId}: ${respuestaRapida.substring(0, 50)}...`);
-        return;
-      }
-    }
-    
-    // Llamar a GPT (Assistant)
+    // Llamar directamente al asistente de OpenAI para todas las consultas
     const reply = await responderConGPT(userId, message, msgObj);
     await msgObj.reply(reply);
     console.log(`📤 [Respuesta GPT] ${userId}: ${reply.substring(0, 50)}...`);
@@ -832,8 +640,9 @@ async function procesarMensaje(userId, message, msgObj) {
 }
 
 // ----------------------------------------------------
-// 5. Eventos de WhatsApp
+// 10. Eventos de WhatsApp
 // ----------------------------------------------------
+
 client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
   console.log('📸 [QR] Escanea este código QR con tu WhatsApp para conectar.');
@@ -848,133 +657,57 @@ client.on('message', async msg => {
   const incoming = msg.body;
   console.log(`📥 [Mensaje] ${userId}: ${incoming}`);
 
-  // Verificar si el mensaje proviene de un grupo
+  // Ignorar mensajes de grupos
   if (esGrupoWhatsApp(userId)) {
-    console.log(`🔇 [Grupo ignorado] ${userId}`);
-    return; // No responder a mensajes de grupos
+    console.log(`🚫 [Grupo] Ignorando mensaje de grupo: ${userId}`);
+    return;
   }
 
-  try {
-    // Si OpenAI no está listo, informamos y ofrecemos operador humano
-    if (!openai) {
-      await msg.reply('Lo siento, el servicio de asistencia avanzada no está disponible en este momento.');
-      await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
-      return;
-    }
+  // Ignorar mensajes del propio bot
+  if (msg.fromMe) {
+    return;
+  }
 
-    // Comando "operador" / "bot"
-    if (incoming.toLowerCase() === 'operador') {
-      humanModeUsers.add(userId);
-      await msg.reply('Te paso con un operador. Cuando quieras volver a hablar con el bot, escribe "bot".');
-      return;
-    }
-    if (incoming.toLowerCase() === 'bot') {
-      humanModeUsers.delete(userId);
-      await msg.reply('✅ El bot ha sido reactivado. ¿En qué puedo ayudarte?');
-      return;
-    }
-
-    // Si está en modo humano, no procesa con GPT
+  // Manejar comando de operador humano
+  if (incoming.toLowerCase().includes('operador')) {
     if (humanModeUsers.has(userId)) {
-      return;
+      humanModeUsers.delete(userId);
+      await msg.reply('Has salido del modo operador humano. Ahora volveré a responder automáticamente.');
+    } else {
+      humanModeUsers.add(userId);
+      await msg.reply('Activado el modo operador humano. Un operador te contactará pronto. Escribe "operador" nuevamente para volver al modo automático.');
     }
-
-    // Usar la función de procesamiento con manejo de concurrencia
-    await procesarMensaje(userId, incoming, msg);
-
-  } catch (err) {
-    console.error('❌ [Error al procesar mensaje]', err);
-    await msg.reply('Lo siento, ocurrió un error. Por favor, intenta más tarde.');
-    await msg.reply('¿Te gustaría hablar con un operador humano? Escribe "operador" para ser derivado.');
+    return;
   }
+
+  // Si el usuario está en modo operador humano, no responder automáticamente
+  if (humanModeUsers.has(userId)) {
+    console.log(`👤 [Operador] Usuario ${userId} en modo operador humano`);
+    return;
+  }
+
+  // Procesar el mensaje con el asistente de OpenAI
+  await procesarMensaje(userId, incoming, msg);
 });
 
-// Limpiar intervalos de mensajes de estado al desconectar
-client.on('disconnected', () => {
-  console.log('🔴 [Desconectado] El bot de WhatsApp se ha desconectado.');
-  
-  // Limpiar todos los intervalos de mensajes de estado
-  for (const [userId, intervalId] of statusMessages.entries()) {
-    clearInterval(intervalId);
-  }
-  statusMessages.clear();
-  
-  // Limpiar runs activos
-  activeRuns.clear();
-  
-  // Desbloquear todos los threads
-  for (const [threadId] of threadLocks.entries()) {
-    threadLocks.set(threadId, false);
-  }
+client.on('disconnected', (reason) => {
+  console.log('🔴 [Desconectado] Cliente desconectado:', reason);
 });
 
 // ----------------------------------------------------
-// 6. Inicializar cliente y servidor HTTP dummy
+// 11. Inicialización y tareas de mantenimiento
 // ----------------------------------------------------
-console.log('🚀 [Iniciando] Bot de WhatsApp con GPT (Assistant) …');
-console.log('🟢 [DEBUG] Antes de client.initialize()');
 
-client.initialize()
-  .then(() => {
-    console.log('🟢 [DEBUG] client.initialize() resuelto');
-  })
-  .catch(err => {
-    console.error('❌ [Error de inicialización]', err);
-    setTimeout(() => {
-      console.log('🔄 Reintentando client.initialize()…');
-      client.initialize();
-    }, 30000);
-  });
+// Ejecutar limpieza más frecuente para mejor estabilidad
+setInterval(limpiarRunsAbandonados, INTERVALO_LIMPIEZA);
 
-const http = require('http');
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Bot de WhatsApp activo\n');
-}).listen(3000, '0.0.0.0', () => {
-  console.log('🌐 [HTTP] Servidor dummy escuchando en 0.0.0.0:3000');
-});
+// Ejecutar optimización del sistema cada 15 minutos
+setInterval(optimizarSistema, 15 * 60 * 1000);
 
-// ----------------------------------------------------
-// 7. Capturar promesas no manejadas
-// ----------------------------------------------------
-process.on('unhandledRejection', reason => {
-  console.error('❌ [Error] Promesa no manejada:', reason);
-});
+// Inicializar el cliente
+client.initialize();
 
-// ----------------------------------------------------
-// 8. Manejo de señales para apagado limpio
-// ----------------------------------------------------
-function shutdown(signal) {
-  console.log(`\n🛑 [Sistema] Señal recibida: ${signal}. Cerrando bot y servidor HTTP…`);
-  
-  // Limpiar todos los intervalos de mensajes de estado
-  for (const [userId, intervalId] of statusMessages.entries()) {
-    clearInterval(intervalId);
-  }
-  statusMessages.clear();
-  
-  // Limpiar runs activos
-  activeRuns.clear();
-  
-  // Desbloquear todos los threads
-  for (const [threadId] of threadLocks.entries()) {
-    threadLocks.set(threadId, false);
-  }
-  
-  try {
-    client.destroy();
-  } catch (e) {
-    console.error('❌ [Error] Al cerrar cliente WhatsApp:', e);
-  }
-  try {
-    server.close(() => {
-      console.log('🌐 [HTTP] Servidor cerrado.');
-      process.exit(0);
-    });
-  } catch (e) {
-    console.error('❌ [Error] Al cerrar servidor HTTP:', e);
-    process.exit(1);
-  }
-}
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+console.log('🚀 [Iniciando] Bot de WhatsApp optimizado - Solo Asistente de OpenAI');
+console.log('⚡ [Configuración] Velocidad y estabilidad optimizadas');
+console.log(`⏱️ [Timeouts] Default: ${TIMEOUT_DEFAULT}s, Reintento: ${TIMEOUT_REINTENTO}s`);
+console.log(`🎛️ [Asistente] Temperature: ${ASSISTANT_CONFIG.temperature}, Max tokens: ${ASSISTANT_CONFIG.max_tokens}`);
