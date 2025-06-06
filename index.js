@@ -1,5 +1,5 @@
-// index.js: Bot de WhatsApp optimizado - Solo Asistente de OpenAI
-// Versión optimizada con mejoras de velocidad y estabilidad
+// index.js: Bot de WhatsApp CORREGIDO - Solo Asistente de OpenAI
+// Versión FINAL con corrección crítica del error max_tokens
 
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -37,10 +37,10 @@ const TIMEOUT_REINTENTO = 20;      // 20 segundos para reintentos
 const MAX_REINTENTOS = 2;          // Máximo 2 reintentos por mensaje
 const INTERVALO_LIMPIEZA = 3 * 60 * 1000; // Limpiar cada 3 minutos
 
-// Configuración optimizada del asistente
+// ✅ CONFIGURACIÓN CORREGIDA - max_tokens solo para chat.completions
 const ASSISTANT_CONFIG = {
   temperature: 0.5,     // Equilibrio óptimo entre velocidad y calidad
-  max_tokens: 400,      // Respuestas completas pero eficientes
+  max_tokens: 400,      // ✅ SOLO para chat.completions (NO para Assistants API)
   timeout: 25000        // Timeout interno de 25 segundos
 };
 
@@ -332,10 +332,12 @@ async function responderConGPT(userId, message, msg) {
         });
 
         console.log(`🆕 [Respuesta] Creando nuevo run optimizado en thread ${threadId}`);
+        
+        // ✅ CORREGIDO: Sin max_tokens para Assistants API
         const runParams = {
           assistant_id: OPENAI_ASSISTANT_ID,
-          temperature: ASSISTANT_CONFIG.temperature,
-          max_tokens: ASSISTANT_CONFIG.max_tokens
+          temperature: ASSISTANT_CONFIG.temperature
+          // ❌ max_tokens eliminado - NO válido para Assistants API
         };
         const run = await openai.beta.threads.runs.create(threadId, runParams);
         
@@ -397,7 +399,7 @@ async function responderConGPT(userId, message, msg) {
       }
     }
 
-    // Fallback optimizado (solo si falta OPENAI_ASSISTANT_ID)
+    // ✅ FALLBACK CORRECTO: max_tokens SÍ es válido para chat.completions
     const response = await openai.chat.completions.create({
       model: 'gpt-3.5-turbo',
       messages: [
@@ -405,7 +407,7 @@ async function responderConGPT(userId, message, msg) {
         { role: 'user', content: message }
       ],
       temperature: ASSISTANT_CONFIG.temperature,
-      max_tokens: ASSISTANT_CONFIG.max_tokens
+      max_tokens: ASSISTANT_CONFIG.max_tokens  // ✅ Válido para chat.completions
     });
 
     return response.choices[0]?.message?.content?.trim() ||
@@ -467,12 +469,12 @@ async function reintentarConsulta(msg, threadId, runId, message) {
     // Esperar un momento para asegurar que el run anterior se haya cancelado
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Crear un nuevo run con parámetros optimizados para velocidad
+    // ✅ CORREGIDO: Sin max_tokens para Assistants API
     console.log(`🆕 [Reintento] Creando nuevo run optimizado en thread ${threadId}`);
     const newRun = await openai.beta.threads.runs.create(threadId, {
       assistant_id: OPENAI_ASSISTANT_ID,
-      temperature: ASSISTANT_CONFIG.temperature,
-      max_tokens: ASSISTANT_CONFIG.max_tokens
+      temperature: ASSISTANT_CONFIG.temperature
+      // ❌ max_tokens eliminado - NO válido para Assistants API
     });
     
     // Registrar el run activo
@@ -707,7 +709,8 @@ setInterval(optimizarSistema, 15 * 60 * 1000);
 // Inicializar el cliente
 client.initialize();
 
-console.log('🚀 [Iniciando] Bot de WhatsApp optimizado - Solo Asistente de OpenAI');
+console.log('🚀 [Iniciando] Bot de WhatsApp CORREGIDO - Solo Asistente de OpenAI');
 console.log('⚡ [Configuración] Velocidad y estabilidad optimizadas');
+console.log('✅ [Corrección] Error max_tokens solucionado');
 console.log(`⏱️ [Timeouts] Default: ${TIMEOUT_DEFAULT}s, Reintento: ${TIMEOUT_REINTENTO}s`);
-console.log(`🎛️ [Asistente] Temperature: ${ASSISTANT_CONFIG.temperature}, Max tokens: ${ASSISTANT_CONFIG.max_tokens}`);
+console.log(`🎛️ [Asistente] Temperature: ${ASSISTANT_CONFIG.temperature}, Fallback max_tokens: ${ASSISTANT_CONFIG.max_tokens}`);
