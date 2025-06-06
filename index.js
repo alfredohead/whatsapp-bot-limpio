@@ -47,7 +47,7 @@ const client = new Client({
 // ----------------------------------------------------
 // 3. Variables globales
 // ----------------------------------------------------
-const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Área Programas Nacionales). Responde con claridad y brevedad.`;
+const SYSTEM_PROMPT    = `Eres un asistente amable y profesional que ayuda a los usuarios de la Municipalidad de San Martín (Dirección Programas Nacionales). Responde con claridad y brevedad.`;
 const chatThreads      = new Map();   // Map<userId, threadId>
 const humanModeUsers   = new Set();   // Set<userId> usuarios en modo "operador humano"
 const userFaileds      = new Map();   // Map<userId, número de intentos fallidos
@@ -66,19 +66,19 @@ const threadLocks = new Map(); // Map<threadId, boolean>
 const respuestasCacheadas = {
   "cursos": {
     palabrasClave: ["curso", "cursos", "capacitacion", "capacitaciones", "taller", "talleres"],
-    respuesta: "La Municipalidad de San Martín ofrece diversos cursos a través de la Escuela de Oficio Manuel Belgrano y el Punto Digital. Los cursos actuales incluyen: informática básica, diseño gráfico, programación, administración pública, y oficios varios. ¿Te interesa alguno en particular?"
+    respuesta: "La Municipalidad de San Martín ofrece diversos cursos a través de la Escuela de Oficio Manuel Belgrano y el Punto Digital. Los cursos actuales incluyen: informática básica, diseño gráfico, programación, administración pública, y oficios varios (carpintería, electricidad, plomería, costura, y gastronomía). ¿Te interesa alguno en particular?"
   },
   "punto_digital": {
     palabrasClave: ["punto digital", "puntodigital", "centro digital", "tecnologia"],
-    respuesta: "El Punto Digital de San Martín ofrece acceso gratuito a tecnología, internet y capacitaciones. Está ubicado en la sede municipal y funciona de lunes a viernes de 9:00 a 18:00. Ofrecen cursos de alfabetización digital, diseño, programación y más."
+    respuesta: "El Punto Digital de San Martín ofrece acceso gratuito a tecnología, internet y capacitaciones. Está ubicado Malvinas Argentinas y Lateral Norte Acceso Este., General San Martín, Argentina y funciona de lunes a viernes de 9:00 a 18:00. Ofrecen cursos de alfabetización digital, diseño, programación y más."
   },
   "artesanos": {
     palabrasClave: ["artesano", "artesanos", "feria", "ferias", "artesania", "artesanias"],
-    respuesta: "La Feria de Artesanos de San Martín se realiza todos los fines de semana en la Plaza Central, de 10:00 a 19:00. Los artesanos interesados en participar pueden inscribirse en la Dirección de Cultura (Edificio Municipal, 2° piso) de lunes a viernes de 8:00 a 14:00."
+    respuesta: "La Feria de Artesanos de San Martín se realiza dos veces al mes, los fines de semana en la plazoleta Sartmiento. Los artesanos interesados en participar pueden inscribirse en la Dirección de Programas Nacionales (Economía Social, Ruta 7 Lateral Sur y Carril San Pedro PASIP Palmira San Martín Mendoza - mail economia.social@sanmartinmza.gob.ar Tel: 2634259744 de lunes a viernes de 8:00 a 13:00."
   },
   "escuela_belgrano": {
     palabrasClave: ["belgrano", "manuel belgrano", "escuela de oficio", "escuela oficio"],
-    respuesta: "La Escuela de Oficio Manuel Belgrano ofrece formación gratuita en diversos oficios como carpintería, electricidad, plomería, costura, y gastronomía. Las inscripciones están abiertas todo el año en la sede municipal. Para más información, puede acercarse personalmente o llamar a la Dirección de Educación."
+    respuesta: "La Escuela de Oficio Manuel Belgrano ofrece formación gratuita en diversos oficios como carpintería, electricidad, plomería, costura, y gastronomía, etc. Consulta inscripciones Malvinas Argentinas y Lateral Norte San Martín Mendoza - Tel 2634210261 - Mail: escuelasuperiordeoficios@gmail.com "
   }
 };
 
