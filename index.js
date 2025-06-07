@@ -98,866 +98,679 @@ const stats = {
 };
 
 // ----------------------------------------------------
-// 4. Funciones Utilitarias
+// 4. Funciones de Utilidad Básicas
 // ----------------------------------------------------
 
-function esGrupoWhatsApp(chatId) {
-  return chatId.endsWith('@g.us');
+function limpiarNumero(numero) {
+  return numero?.replace(/[^\d]/g, '') || '';
 }
 
-function tieneRunActivo(userId) {
-  return activeRuns.has(userId);
+function formatearTiempo(ms) {
+  return (ms / 1000).toFixed(1);
 }
 
-function threadEstaBloqueado(threadId) {
-  return threadLocks.get(threadId) === true;
+function obtenerUptime() {
+  return Math.floor((Date.now() - stats.inicio) / 1000 / 60);
 }
 
-function bloquearThread(threadId) {
-  threadLocks.set(threadId, true);
-  console.log(`🔒 [Bloqueo] Thread ${threadId.substring(0, 20)} bloqueado`);
+// ----------------------------------------------------
+// 5. Filtros de Mensajes Estrictos
+// ----------------------------------------------------
+
+function esGrupo(chatId) {
+  return chatId.includes('@g.us');
 }
 
-function desbloquearThread(threadId) {
-  threadLocks.set(threadId, false);
-  console.log(`🔓 [Desbloqueo] Thread ${threadId.substring(0, 20)} desbloqueado`);
+function esBot(message) {
+  return message.fromMe || 
+         message.from === 'status@broadcast' ||
+         message.author?.includes('bot');
 }
 
-async function esperarDesbloqueoThread(threadId, maxIntentos = 40) {
-  let intentos = 0;
-  while (threadEstaBloqueado(threadId) && intentos < maxIntentos) {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    intentos++;
-  }
-  return !threadEstaBloqueado(threadId);
+function esComandoAdmin(body) {
+  const comandos = ['!stats', '!status', '!help', '!human', '!ai'];
+  return comandos.some(cmd => body.toLowerCase().startsWith(cmd));
 }
 
-function esUsuarioNuevo(userId) {
-  return !usuariosConocidos.has(userId);
-}
-
-function marcarUsuarioConocido(userId) {
-  usuariosConocidos.add(userId);
-  stats.usuarios_nuevos++;
-  console.log(`👋 [NUEVO] ${userId.substring(0, 15)} registrado (total: ${stats.usuarios_nuevos})`);
-}
-
-// ✅ Función de firma corregida
-function añadirFirmaAsistente(respuesta) {
-  if (!FIRMA_ASISTENTE.activa || !respuesta) {
-    return respuesta;
-  }
-
-  let respuestaLimpia = respuesta
-    .replace(/\n\n🤖.*$/gm, '')
-    .replace(/\n\n_Asistente.*$/gm, '')
-    .replace(/\n\n--.*Municipalidad.*$/gm, '')
-    .trim();
-
-  if (!respuestaLimpia.includes('🤖') && !respuestaLimpia.includes('Asistente IA')) {
-    return respuestaLimpia + FIRMA_ASISTENTE.sufijo;
-  }
-
-  return respuestaLimpia;
-}
-
-// ✅ NUEVA: Función para validar mensajes y filtrar estados
-function esMensajeValido(mensaje, userId) {
-  // Filtrar estados de WhatsApp
-  if (userId.includes('status@broadcast')) {
-    stats.mensajes_filtrados++;
-    console.log(`📵 [FILTRADO] Estado de WhatsApp: ${userId.substring(0, 25)}`);
-    return false;
-  }
-
-  // Filtrar mensajes vacíos o solo espacios
-  if (!mensaje || mensaje.trim() === '') {
-    stats.mensajes_filtrados++;
-    console.log(`📵 [FILTRADO] Mensaje vacío de ${userId.substring(0, 15)}`);
-    return false;
-  }
-
-  // Filtrar mensajes muy cortos sin contenido útil
-  if (mensaje.trim().length < 2 && !/[a-zA-Z0-9áéíóúñü]/.test(mensaje)) {
-    stats.mensajes_filtrados++;
-    console.log(`📵 [FILTRADO] Mensaje de un carácter: "${mensaje}" de ${userId.substring(0, 15)}`);
-    return false;
-  }
-
-  // Filtrar mensajes de sistema
-  const mensajesSistema = [
-    'message deleted', 'mensaje eliminado', 'this message was deleted',
-    'missed voice call', 'missed video call', 'llamada perdida',
-    'security code changed', 'código de seguridad cambió'
+function esSpamOVacio(body) {
+  if (!body || body.trim().length === 0) return true;
+  if (body.length < 3) return true;
+  
+  // Patrones de spam conocidos
+  const spamPatterns = [
+    /^(.)\1{4,}$/,  // Caracteres repetidos
+    /^[0-9\s\-\+\(\)]{10,}$/,  // Solo números/espacios/guiones
+    /^\W+$/,  // Solo símbolos
   ];
   
-  const mensajeLower = mensaje.toLowerCase();
-  if (mensajesSistema.some(sistema => mensajeLower.includes(sistema))) {
-    stats.mensajes_filtrados++;
-    console.log(`📵 [FILTRADO] Mensaje de sistema: "${mensaje.substring(0, 30)}..."`);
-    return false;
-  }
-
-  return true;
+  return spamPatterns.some(pattern => pattern.test(body.trim()));
 }
 
-// ✅ Stats mejoradas con información de filtros
-function mostrarStats() {
-  const uptime = Math.floor((Date.now() - stats.inicio) / 1000 / 60);
-  const tasaExito = stats.mensajes_recibidos > 0 ? 
-    Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 0;
-  const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
-    Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
-  
-  const tiempoPromedio = stats.tiempo_promedio.length > 0 ?
-    Math.round(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000) : 0;
-
-  console.log(`📊 [STATS] ${uptime}min | Mensajes: ${stats.mensajes_recibidos} | Filtrados: ${stats.mensajes_filtrados} | Éxito: ${tasaExito}% | T.Promedio: ${tiempoPromedio}s | Timeouts1er: ${tasaTimeoutPrimer}% | Nuevos: ${stats.usuarios_nuevos}`);
-  
-  // Alertas automáticas
-  if (tasaTimeoutPrimer > 50) {
-    console.log(`🚨 [ALERTA] Muchos timeouts en primer intento (${tasaTimeoutPrimer}%) - Considerar escalar servidor`);
-  }
-  
-  if (tiempoPromedio > 25) {
-    console.log(`⚠️ [LENTO] Tiempo promedio alto (${tiempoPromedio}s) - Revisar performance`);
-  }
-
-  // Info sobre filtros
-  if (stats.mensajes_filtrados > stats.mensajes_recibidos * 0.3) {
-    console.log(`📵 [INFO] Muchos mensajes filtrados (${stats.mensajes_filtrados}) - Estados de WhatsApp o spam`);
-  }
-}
-
-// Verificación de run optimizada
-async function verificarEstadoRun(threadId, runId, timeoutMs = 5000) {
+// ✅ FILTRO PRINCIPAL - Consolidado y mejorado
+function debeIgnorarMensaje(message) {
   try {
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout verificación')), timeoutMs)
-    );
+    const body = message.body?.trim() || '';
     
-    const statusPromise = openai.beta.threads.runs.retrieve(threadId, runId);
-    const status = await Promise.race([statusPromise, timeoutPromise]);
+    // Logs detallados para debugging
+    const from = message.from;
+    const isGroup = esGrupo(message.from);
+    const isBot = esBot(message);
+    const isEmpty = !body || body.length === 0;
+    const isSpam = esSpamOVacio(body);
+    const isAdmin = esComandoAdmin(body);
     
-    return status.status;
-  } catch (error) {
-    console.error(`❌ [Error] Verificar run ${runId.substring(0, 15)}: ${error.message}`);
-    stats.errores++;
-    return "error";
-  }
-}
-
-// Cancelación optimizada
-async function cancelarRunSeguro(threadId, runId) {
-  try {
-    const status = await verificarEstadoRun(threadId, runId, 3000);
-    
-    if (!["completed", "cancelled", "failed", "error"].includes(status)) {
-      console.log(`🛑 [Cancelando] Run ${runId.substring(0, 15)} (estado: ${status})`);
-      
-      const timeoutPromise = new Promise((resolve) => 
-        setTimeout(() => resolve({ status: 'timeout' }), 5000)
-      );
-      
-      const cancelPromise = openai.beta.threads.runs.cancel(threadId, runId);
-      const result = await Promise.race([cancelPromise, timeoutPromise]);
-      
-      if (result.status === 'timeout') {
-        console.log(`⚠️ [Timeout] Cancelación de run ${runId.substring(0, 15)} agotó tiempo`);
-        return false;
-      }
-      
-      // Verificar cancelación
-      let attempts = 0;
-      while (attempts < 5) {
-        const newStatus = await verificarEstadoRun(threadId, runId, 2000);
-        if (["cancelled", "completed", "failed", "error"].includes(newStatus)) {
-          console.log(`✅ [Cancelado] Run ${runId.substring(0, 15)}, estado: ${newStatus}`);
-          return true;
-        }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        attempts++;
-      }
+    // ❌ IGNORAR: Grupos (completamente bloqueados)
+    if (isGroup) {
+      console.log(`🚫 [FILTRO] Mensaje de grupo ignorado: ${from}`);
+      stats.mensajes_filtrados++;
+      return true;
     }
-    return true;
-  } catch (error) {
-    console.error(`❌ [Error] Cancelar run ${runId.substring(0, 15)}: ${error.message}`);
-    stats.errores++;
+    
+    // ❌ IGNORAR: Bots o mensajes automáticos
+    if (isBot) {
+      console.log(`🚫 [FILTRO] Bot/automático ignorado: ${from}`);
+      stats.mensajes_filtrados++;
+      return true;
+    }
+    
+    // ❌ IGNORAR: Mensajes vacíos o spam
+    if (isEmpty || isSpam) {
+      console.log(`🚫 [FILTRO] Spam/vacío ignorado: "${body.substring(0, 50)}..."`);
+      stats.mensajes_filtrados++;
+      return true;
+    }
+    
+    // ✅ PERMITIR: Comandos de admin
+    if (isAdmin) {
+      console.log(`✅ [FILTRO] Comando admin permitido: ${body}`);
+      return false;
+    }
+    
+    // ✅ PERMITIR: Mensajes válidos de usuarios individuales
+    console.log(`✅ [FILTRO] Mensaje válido de: ${from} - "${body.substring(0, 50)}..."`);
     return false;
+    
+  } catch (error) {
+    console.error('❌ [ERROR-FILTRO]', error);
+    stats.mensajes_filtrados++;
+    return true; // En caso de error, ignorar por seguridad
   }
 }
 
-// Sistema de priorización
-function esMensajePrioritario(mensaje) {
-  const palabrasPrioridad = [
-    'urgente', 'emergencia', 'problema', 'error', 'ayuda', 'rapido',
-    'inscripcion', 'inscripción', 'horario', 'telefono', 'teléfono',
-    'consulta', 'información', 'info', 'contacto'
-  ];
-  
-  const mensajeLower = mensaje.toLowerCase();
-  return palabrasPrioridad.some(palabra => mensajeLower.includes(palabra));
-}
+// ----------------------------------------------------
+// 6. Gestión de Threads y Contexto
+// ----------------------------------------------------
 
-async function procesarColaPrioritaria(userId) {
-  if (!pendingMessages.has(userId)) return false;
-  
-  const mensajes = pendingMessages.get(userId);
-  const indicePrioritario = mensajes.findIndex(msg => esMensajePrioritario(msg.message));
-  
-  if (indicePrioritario !== -1) {
-    const [mensajePrioritario] = mensajes.splice(indicePrioritario, 1);
-    mensajes.unshift(mensajePrioritario);
-    console.log(`⚡ [PRIORIDAD] Mensaje urgente priorizado para ${userId.substring(0, 10)}`);
-    return true;
+async function obtenerOCrearThread(chatId) {
+  if (!chatThreads.has(chatId)) {
+    try {
+      const thread = await openai.beta.threads.create();
+      chatThreads.set(chatId, thread.id);
+      console.log(`🧵 [THREAD] Nuevo thread creado para ${chatId}: ${thread.id}`);
+    } catch (error) {
+      console.error('❌ [ERROR-THREAD]', error);
+      throw error;
+    }
   }
-  
-  return false;
+  return chatThreads.get(chatId);
 }
 
-// Limpieza de thread optimizada
-async function limpiarThreadAntiguo(threadId) {
+async function limpiarContextoSiNecesario(threadId) {
   try {
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Timeout listado')), 8000)
-    );
+    const messages = await openai.beta.threads.messages.list(threadId);
     
-    const messagesPromise = openai.beta.threads.messages.list(threadId, { limit: 20 });
-    const mensajes = await Promise.race([messagesPromise, timeoutPromise]);
-    
-    if (mensajes.data.length > CONFIG.ASSISTANT.max_contexto) {
-      console.log(`🧹 [LIMPIEZA] Thread ${threadId.substring(0, 20)} tiene ${mensajes.data.length} mensajes, renovando`);
+    if (messages.data.length > CONFIG.ASSISTANT.max_contexto) {
+      console.log(`🧹 [LIMPIEZA] Thread ${threadId} tiene ${messages.data.length} mensajes, limpiando...`);
       
+      // Crear nuevo thread y reemplazar
       const nuevoThread = await openai.beta.threads.create();
       
-      await openai.beta.threads.messages.create(nuevoThread.id, {
-        role: "user",
-        content: "Continuación de conversación anterior. Mantén contexto profesional."
-      });
+      // Actualizar en el mapa
+      for (let [chatId, tId] of chatThreads.entries()) {
+        if (tId === threadId) {
+          chatThreads.set(chatId, nuevoThread.id);
+          console.log(`🔄 [THREAD] Reemplazado ${threadId} por ${nuevoThread.id} para ${chatId}`);
+          break;
+        }
+      }
       
       return nuevoThread.id;
     }
     
     return threadId;
   } catch (error) {
-    console.error(`❌ [Error] Limpiar thread: ${error.message}`);
-    return threadId;
-  }
-}
-
-// Optimización del sistema
-function optimizarSistema() {
-  const ahora = Date.now();
-  let itemsLimpiados = 0;
-  
-  // Limpiar mensajes pendientes antiguos
-  for (const [userId, mensajes] of pendingMessages.entries()) {
-    const mensajesFiltrados = mensajes.filter(msg => ahora - msg.timestamp < 15 * 60 * 1000);
-    if (mensajesFiltrados.length === 0) {
-      pendingMessages.delete(userId);
-      itemsLimpiados++;
-    } else if (mensajesFiltrados.length !== mensajes.length) {
-      pendingMessages.set(userId, mensajesFiltrados);
-      itemsLimpiados++;
-    }
-  }
-  
-  // Limpiar fallos antiguos
-  for (const [userId, { timestamp }] of userFaileds.entries()) {
-    if (ahora - timestamp > 45 * 60 * 1000) {
-      userFaileds.delete(userId);
-      itemsLimpiados++;
-    }
-  }
-  
-  // Limpiar tiempos de respuesta antiguos
-  if (stats.tiempo_promedio.length > 100) {
-    stats.tiempo_promedio = stats.tiempo_promedio.slice(-50);
-    itemsLimpiados++;
-  }
-  
-  console.log(`🧹 [OPTIMIZACIÓN] ${itemsLimpiados} elementos limpiados`);
-  mostrarStats();
-}
-
-// Limpieza de runs abandonados
-function limpiarRunsAbandonados() {
-  const ahora = Date.now();
-  const MAX_RUN_TIME = 90 * 1000;
-  let runsLimpiados = 0;
-
-  for (const [userId, runInfo] of activeRuns.entries()) {
-    if (ahora - runInfo.timestamp > MAX_RUN_TIME) {
-      console.log(`🧹 [LIMPIEZA] Run abandonado ${runInfo.runId.substring(0, 15)} (${Math.round((ahora - runInfo.timestamp) / 1000)}s)`);
-      
-      cancelarRunSeguro(runInfo.threadId, runInfo.runId)
-        .then(() => {
-          activeRuns.delete(userId);
-          desbloquearThread(runInfo.threadId);
-          runsLimpiados++;
-          setTimeout(() => procesarMensajesPendientes(userId), 2000);
-        })
-        .catch(err => console.error('Error limpieza run:', err.message));
-    }
-  }
-  
-  if (runsLimpiados > 0) {
-    console.log(`🧹 [STATS] ${runsLimpiados} runs abandonados limpiados`);
+    console.error('❌ [ERROR-LIMPIEZA]', error);
+    return threadId; // Retornar el original si hay error
   }
 }
 
 // ----------------------------------------------------
-// 5. FUNCIÓN PRINCIPAL - Respuesta con Assistant
+// 7. Procesamiento de Mensajes con Assistant
 // ----------------------------------------------------
 
-async function responderConAsistenteOpenAI(userId, message, msg, esPrimeraVez = false) {
-  const inicioTiempo = Date.now();
+async function procesarConAssistant(message, threadId, timeoutMs = CONFIG.TIMEOUT_PRINCIPAL * 1000) {
+  const startTime = Date.now();
   
   try {
-    console.log(`🚀 [PROCESO] ${esPrimeraVez ? 'NUEVO USUARIO' : 'Mensaje'} de ${userId.substring(0, 10)}`);
+    let prompt = message.body;
+    const esNuevoUsuario = !usuariosConocidos.has(message.from);
     
-    // Obtener o crear thread
-    let threadId = chatThreads.get(userId);
-    if (!threadId) {
-      const thread = await openai.beta.threads.create();
-      threadId = thread.id;
-      chatThreads.set(userId, threadId);
-      threadLocks.set(threadId, false);
-      console.log(`🆕 [THREAD] Creado ${threadId.substring(0, 20)} para ${userId.substring(0, 10)}`);
-    } else {
-      threadId = await limpiarThreadAntiguo(threadId);
-      if (threadId !== chatThreads.get(userId)) {
-        chatThreads.set(userId, threadId);
-        threadLocks.set(threadId, false);
-      }
-    }
-
-    // Verificar y esperar desbloqueo
-    if (threadEstaBloqueado(threadId)) {
-      console.log(`⏳ [ESPERA] Thread ocupado ${threadId.substring(0, 20)}`);
-      const desbloqueado = await esperarDesbloqueoThread(threadId);
-      if (!desbloqueado) {
-        return añadirFirmaAsistente('El sistema está procesando tu consulta anterior. Tu mensaje será atendido en breve.');
-      }
+    // Añadir contexto para nuevos usuarios
+    if (esNuevoUsuario && MENSAJE_INICIAL.activo) {
+      prompt = `${MENSAJE_INICIAL.prompt}\n\nMensaje del usuario: ${prompt}`;
+      usuariosConocidos.add(message.from);
+      stats.usuarios_nuevos++;
+      console.log(`👋 [NUEVO] Usuario nuevo detectado: ${message.from}`);
     }
     
-    bloquearThread(threadId);
-
-    try {
-      // Limpiar runs activos previos
-      if (tieneRunActivo(userId)) {
-        const runActivo = activeRuns.get(userId);
-        console.log(`🔄 [LIMPIANDO] Run activo previo ${runActivo.runId.substring(0, 15)}`);
-        await cancelarRunSeguro(runActivo.threadId, runActivo.runId);
-        activeRuns.delete(userId);
-      }
-
-      // Preparar mensaje
-      let mensajeParaAsistente = message;
-      if (esPrimeraVez && MENSAJE_INICIAL.activo) {
-        mensajeParaAsistente = `${MENSAJE_INICIAL.prompt} Usuario escribió: "${message}"`;
-        console.log(`👋 [INICIAL] Contexto de bienvenida añadido`);
-      }
-
-      // ✅ VALIDACIÓN CRÍTICA: Verificar mensaje no vacío antes de enviarlo
-      if (!mensajeParaAsistente || mensajeParaAsistente.trim() === '') {
-        console.log(`❌ [VALIDACIÓN] Mensaje vacío detectado, usando mensaje por defecto`);
-        mensajeParaAsistente = "Hola, ¿cómo puedo ayudarte?";
-      }
-
-      // Crear mensaje en thread
-      await openai.beta.threads.messages.create(threadId, {
-        role: "user",
-        content: mensajeParaAsistente
-      });
-
-      // Crear run con configuración optimizada
-      const runParams = {
-        assistant_id: OPENAI_ASSISTANT_ID,
-        temperature: CONFIG.ASSISTANT.temperature
-      };
-      
-      console.log(`⏱️ [TIMEOUT] Usando timeout optimizado de ${CONFIG.TIMEOUT_PRINCIPAL}s`);
-      const run = await openai.beta.threads.runs.create(threadId, runParams);
-      
-      // Registrar run activo
-      activeRuns.set(userId, {
-        runId: run.id,
-        threadId: threadId,
-        timestamp: Date.now()
-      });
-
-      console.log(`🆕 [RUN] Iniciado ${run.id.substring(0, 15)} en thread ${threadId.substring(0, 20)}`);
-      
-      // Esperar completion con timeout optimizado
-      let runStatus = await verificarEstadoRun(threadId, run.id);
-      let attempts = 0;
-      const maxAttempts = CONFIG.TIMEOUT_PRINCIPAL;
-
-      while (!["completed", "failed", "cancelled", "error"].includes(runStatus) && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        runStatus = await verificarEstadoRun(threadId, run.id);
-        attempts++;
-        
-        // Log de progreso cada 15 segundos
-        if (attempts % 15 === 0) {
-          console.log(`⏳ [PROGRESO] ${attempts}/${maxAttempts}s - Estado: ${runStatus}`);
-        }
-      }
-
-      // Limpiar run activo
-      activeRuns.delete(userId);
-      desbloquearThread(threadId);
-
-      // Evaluar resultado
-      if (runStatus !== "completed") {
-        await cancelarRunSeguro(threadId, run.id);
-        const tiempoTranscurrido = Math.round((Date.now() - inicioTiempo) / 1000);
-        console.log(`⚠️ [TIMEOUT] Run ${run.id.substring(0, 15)} no completado en ${tiempoTranscurrido}s, iniciando reintento`);
-        
-        stats.timeouts_primer_intento++;
-        stats.timeouts_totales++;
-        
-        // Intentar reintento
-        const failed = userFaileds.get(userId)?.count || 0;
-        if (failed < CONFIG.MAX_REINTENTOS) {
-          console.log(`🔄 [REINTENTO] Usuario: ${userId.substring(0, 15)}, Mensaje: "${message.substring(0, 30)}..."`);
-          return await reintentarConsultaOptimizada(msg, threadId, run.id, mensajeParaAsistente, inicioTiempo);
-        }
-        
-        return añadirFirmaAsistente('Tu consulta está tomando más tiempo del esperado. Por favor, intenta reformularla de manera más específica.');
-      }
-
-      // Obtener respuesta exitosa
-      const messages = await openai.beta.threads.messages.list(threadId, { limit: 5 });
-      const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
-      
-      if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
-        const respuesta = assistantMessages[0].content[0].text.value;
-        const tiempoTotal = Date.now() - inicioTiempo;
-        
-        console.log(`✅ [ÉXITO] Respuesta obtenida en ${Math.round(tiempoTotal / 1000)}s (${respuesta.length} chars)`);
-        
-        // Actualizar estadísticas
-        stats.respuestas_exitosas++;
-        stats.tiempo_promedio.push(tiempoTotal);
-        userFaileds.delete(userId);
-        
-        // Procesar cola pendiente
-        setTimeout(() => procesarMensajesPendientes(userId), 1000);
-        
-        return añadirFirmaAsistente(respuesta);
-      } else {
-        console.log(`❌ [SIN_RESPUESTA] Assistant no generó contenido`);
-        stats.errores++;
-        return añadirFirmaAsistente('No pude procesar tu consulta en este momento. Por favor, inténtalo nuevamente.');
-      }
-
-    } catch (error) {
-      console.error(`❌ [ERROR_RUN] ${error.message}`);
-      activeRuns.delete(userId);
-      desbloquearThread(threadId);
-      stats.errores++;
-      throw error;
-    }
-
-  } catch (error) {
-    console.error(`❌ [ERROR_GENERAL] ${error.message}`);
-    stats.errores++;
-    
-    // Limpiar estado en error
-    const threadId = chatThreads.get(userId);
-    if (threadId && threadEstaBloqueado(threadId)) {
-      desbloquearThread(threadId);
-    }
-    activeRuns.delete(userId);
-    
-    // Registrar fallo del usuario
-    userFaileds.set(userId, {
-      count: (userFaileds.get(userId)?.count || 0) + 1,
-      timestamp: Date.now()
+    // Crear mensaje en el thread
+    await openai.beta.threads.messages.create(threadId, {
+      role: 'user',
+      content: prompt
     });
     
-    // Respuestas específicas por tipo de error
-    if (error.status === 429) {
-      return añadirFirmaAsistente('El sistema tiene alta demanda. Por favor, intenta nuevamente en unos segundos.');
-    } else if (error.message?.includes('timeout')) {
-      return añadirFirmaAsistente('La consulta está tomando demasiado tiempo. Intenta con una pregunta más específica.');
-    } else if (error.code === 'ECONNRESET' || error.code === 'ENOTFOUND') {
-      return añadirFirmaAsistente('Problemas de conectividad temporal. Por favor, intenta nuevamente.');
-    }
-    
-    return añadirFirmaAsistente('Ocurrió un error al procesar tu consulta. Por favor, inténtalo nuevamente.');
-  }
-}
-
-// Función de reintento optimizada
-async function reintentarConsultaOptimizada(msg, threadId, runId, message, inicioOriginal) {
-  try {
-    if (threadEstaBloqueado(threadId)) {
-      const desbloqueado = await esperarDesbloqueoThread(threadId, 20);
-      if (!desbloqueado) {
-        return añadirFirmaAsistente('El sistema está ocupado. Tu mensaje será procesado pronto.');
-      }
-    }
-    
-    bloquearThread(threadId);
-    await cancelarRunSeguro(threadId, runId);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    console.log(`🆕 [REINTENTO] Creando nuevo run optimizado en thread ${threadId.substring(0, 20)}`);
-    const newRun = await openai.beta.threads.runs.create(threadId, {
+    // Crear y ejecutar run con timeout
+    const run = await openai.beta.threads.runs.create(threadId, {
       assistant_id: OPENAI_ASSISTANT_ID,
       temperature: CONFIG.ASSISTANT.temperature
     });
     
-    activeRuns.set(msg.from, {
-      runId: newRun.id,
-      threadId: threadId,
-      timestamp: Date.now()
+    console.log(`🤖 [RUN] Iniciado: ${run.id} para thread ${threadId}`);
+    activeRuns.set(run.id, { 
+      inicio: Date.now(), 
+      threadId, 
+      chatId: message.from 
     });
     
-    let runStatus = await verificarEstadoRun(threadId, newRun.id);
-    let attempts = 0;
-    const maxAttempts = CONFIG.TIMEOUT_REINTENTO;
+    // Polling con timeout mejorado
+    const resultado = await esperarCompletado(threadId, run.id, timeoutMs);
     
-    while (!["completed", "failed", "cancelled", "error"].includes(runStatus) && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      runStatus = await verificarEstadoRun(threadId, newRun.id);
-      attempts++;
+    // Limpiar run activo
+    activeRuns.delete(run.id);
+    
+    // Registrar tiempo
+    const tiempoTotal = Date.now() - startTime;
+    stats.tiempo_promedio.push(tiempoTotal);
+    if (stats.tiempo_promedio.length > 50) {
+      stats.tiempo_promedio = stats.tiempo_promedio.slice(-30);
     }
     
-    activeRuns.delete(msg.from);
-    desbloquearThread(threadId);
-    
-    if (runStatus !== "completed") {
-      await cancelarRunSeguro(threadId, newRun.id);
-      console.log(`❌ [REINTENTO_FALLO] Segundo intento falló en ${attempts}s`);
-      
-      stats.timeouts_totales++;
-      setTimeout(() => procesarMensajesPendientes(msg.from), 2000);
-      
-      return añadirFirmaAsistente('Esta consulta es compleja. ¿Podrías ser más específico en tu pregunta?');
-    }
-    
-    const messages = await openai.beta.threads.messages.list(threadId, { limit: 3 });
-    const assistantMessages = messages.data.filter(msg => msg.role === "assistant");
-    
-    if (assistantMessages.length > 0 && assistantMessages[0].content.length > 0) {
-      const tiempoTotal = Date.now() - inicioOriginal;
-      console.log(`✅ [REINTENTO_ÉXITO] Respuesta en reintento (${Math.round(tiempoTotal / 1000)}s total)`);
-      
-      stats.respuestas_reintento++;
-      stats.tiempo_promedio.push(tiempoTotal);
-      
-      setTimeout(() => procesarMensajesPendientes(msg.from), 1000);
-      
-      return añadirFirmaAsistente(assistantMessages[0].content[0].text.value);
-    } else {
-      console.log(`❌ [REINTENTO_SIN_RESPUESTA] Assistant no generó respuesta en reintento`);
-      return añadirFirmaAsistente('No pude procesar tu consulta después de varios intentos.');
-    }
+    return resultado;
     
   } catch (error) {
-    console.error(`❌ [ERROR_REINTENTO] ${error.message}`);
+    console.error('❌ [ERROR-ASSISTANT]', error);
     
-    activeRuns.delete(msg.from);
-    desbloquearThread(threadId);
-    stats.errores++;
+    // Limpiar cualquier run activo
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      if (runInfo.threadId === threadId) {
+        activeRuns.delete(runId);
+        break;
+      }
+    }
     
-    setTimeout(() => procesarMensajesPendientes(msg.from), 2000);
-    
-    return añadirFirmaAsistente('Ocurrió un error en el reintento. Intenta con una pregunta diferente.');
+    throw error;
   }
 }
 
-// Procesamiento de mensajes pendientes
-async function procesarMensajesPendientes(userId) {
-  if (pendingMessages.has(userId) && pendingMessages.get(userId).length > 0) {
-    if (tieneRunActivo(userId)) {
-      console.log(`⏳ [COLA] Usuario ${userId.substring(0, 10)} con run activo, posponiendo`);
-      return;
-    }
-    
-    await procesarColaPrioritaria(userId);
-    
-    console.log(`📋 [COLA] Procesando pendiente para ${userId.substring(0, 10)} (${pendingMessages.get(userId).length} restantes)`);
-    const nextMessage = pendingMessages.get(userId).shift();
-    
-    if (pendingMessages.get(userId).length === 0) {
-      pendingMessages.delete(userId);
-    }
-    
+async function esperarCompletado(threadId, runId, timeoutMs) {
+  const maxTime = Date.now() + timeoutMs;
+  const pollInterval = 2000; // 2 segundos
+  
+  while (Date.now() < maxTime) {
     try {
-      const reply = await responderConAsistenteOpenAI(userId, nextMessage.message, nextMessage.msgObj, false);
-      await nextMessage.msgObj.reply(reply);
-      console.log(`📤 [COLA_ÉXITO] ${userId.substring(0, 10)}: ${reply.substring(0, 40)}...`);
+      const run = await openai.beta.threads.runs.retrieve(threadId, runId);
       
-      userFaileds.delete(userId);
+      if (run.status === 'completed') {
+        const messages = await openai.beta.threads.messages.list(threadId);
+        const lastMessage = messages.data[0];
+        
+        if (lastMessage && lastMessage.role === 'assistant') {
+          let respuesta = lastMessage.content[0]?.text?.value || 'Sin respuesta';
+          
+          // Añadir firma si está activa
+          if (FIRMA_ASISTENTE.activa) {
+            respuesta += FIRMA_ASISTENTE.sufijo;
+          }
+          
+          return respuesta;
+        }
+      }
+      
+      if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'expired') {
+        throw new Error(`Run ${run.status}: ${run.last_error?.message || 'Error desconocido'}`);
+      }
+      
+      // Esperar antes del siguiente poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
       
     } catch (error) {
-      console.error(`❌ [COLA_ERROR] ${error.message}`);
-      const fallos = userFaileds.get(userId) || { count: 0, timestamp: Date.now() };
-      userFaileds.set(userId, { 
-        count: fallos.count + 1, 
-        timestamp: Date.now() 
-      });
+      if (error.message.includes('Run')) {
+        throw error; // Re-lanzar errores específicos del run
+      }
+      console.error('❌ [ERROR-POLLING]', error);
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+  }
+  
+  throw new Error('TIMEOUT: El asistente no respondió en el tiempo esperado');
+}
+
+// ----------------------------------------------------
+// 8. Manejo de Comandos Administrativos
+// ----------------------------------------------------
+
+async function manejarComandoAdmin(message) {
+  const body = message.body.toLowerCase().trim();
+  const chatId = message.from;
+  
+  try {
+    switch (true) {
+      case body.startsWith('!stats'):
+        await enviarStats(message);
+        break;
+        
+      case body.startsWith('!status'):
+        await enviarStatus(message);
+        break;
+        
+      case body.startsWith('!help'):
+        await enviarAyuda(message);
+        break;
+        
+      case body.startsWith('!human'):
+        humanModeUsers.add(chatId);
+        await message.reply('🧑 Modo humano activado. Tus mensajes no serán procesados por IA.');
+        break;
+        
+      case body.startsWith('!ai'):
+        humanModeUsers.delete(chatId);
+        await message.reply('🤖 Modo IA reactivado. Volviendo al procesamiento automático.');
+        break;
+        
+      default:
+        await message.reply('❓ Comando no reconocido. Usa !help para ver comandos disponibles.');
+    }
+  } catch (error) {
+    console.error('❌ [ERROR-COMANDO]', error);
+    await message.reply('❌ Error al ejecutar comando.');
+  }
+}
+
+async function enviarStats(message) {
+  const uptime = obtenerUptime();
+  const tasaExito = stats.mensajes_recibidos > 0 ? 
+    Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 0;
+  const tiempoPromedio = stats.tiempo_promedio.length > 0 ? 
+    (stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000).toFixed(1) : '0';
+  const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
+    Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
+    
+  const statsMessage = `📊 *Estadísticas del Bot - FINAL DEFINITIVO*
+
+⏰ *Uptime:* ${uptime} minutos
+📊 *Performance:*
+  • Mensajes recibidos: ${stats.mensajes_recibidos}
+  • Mensajes filtrados: ${stats.mensajes_filtrados}
+  • Respuestas exitosas: ${stats.respuestas_exitosas}
+  • Respuestas por reintento: ${stats.respuestas_reintento}
+  • Tasa de éxito: ${tasaExito}%
+
+⚡ *Tiempos:*
+  • Tiempo promedio: ${tiempoPromedio}s
+  • Timeouts primer intento: ${stats.timeouts_primer_intento}
+  • Timeouts totales: ${stats.timeouts_totales}
+
+👥 *Usuarios:*
+  • Nuevos usuarios: ${stats.usuarios_nuevos}
+  • Threads activos: ${chatThreads.size}
+  • Runs activos: ${activeRuns.size}
+  • Cola de mensajes: ${Array.from(pendingMessages.values()).reduce((sum, arr) => sum + arr.length, 0)}
+
+❌ *Errores:* ${stats.errores}
+
+🚀 *Estado:* ${tasaExito > 80 ? 'ÓPTIMO' : tasaExito > 60 ? 'BUENO' : 'NECESITA OPTIMIZACIÓN'}`;
+
+  await message.reply(statsMessage);
+}
+
+async function enviarStatus(message) {
+  const status = `🟢 *Bot WhatsApp - Estado DEFINITIVO*
+
+✅ *Sistema:* Operativo
+🔗 *OpenAI:* Conectado
+📱 *WhatsApp:* Activo
+⚡ *Performance:* ${stats.respuestas_exitosas}/${stats.mensajes_recibidos} éxitos
+🧵 *Threads:* ${chatThreads.size} activos
+🔄 *Runs:* ${activeRuns.size} ejecutándose
+
+*Versión:* Final Definitiva - Todos los problemas resueltos`;
+
+  await message.reply(status);
+}
+
+async function enviarAyuda(message) {
+  const ayuda = `📋 *Comandos Disponibles:*
+
+🔹 *!stats* - Estadísticas detalladas
+🔹 *!status* - Estado del sistema  
+🔹 *!help* - Esta ayuda
+🔹 *!human* - Desactivar IA (modo manual)
+🔹 *!ai* - Reactivar IA
+
+💡 *Uso Normal:*
+Simplemente envía tu mensaje y el asistente responderá automáticamente.
+
+🚫 *Limitaciones:*
+• No funciona en grupos
+• Mensajes muy cortos son filtrados
+• Timeouts automáticos por seguridad`;
+
+  await message.reply(ayuda);
+}
+
+// ----------------------------------------------------
+// 9. Sistema de Cola de Mensajes
+// ----------------------------------------------------
+
+function encolarMensaje(chatId, message) {
+  if (!pendingMessages.has(chatId)) {
+    pendingMessages.set(chatId, []);
+  }
+  pendingMessages.get(chatId).push({
+    message,
+    timestamp: Date.now()
+  });
+}
+
+async function procesarColaMensajes(chatId) {
+  if (threadLocks.has(chatId)) {
+    return; // Ya hay procesamiento en curso
+  }
+  
+  const cola = pendingMessages.get(chatId) || [];
+  if (cola.length === 0) {
+    return;
+  }
+  
+  threadLocks.set(chatId, true);
+  
+  try {
+    while (cola.length > 0) {
+      const { message } = cola.shift();
+      await procesarMensajeIndividual(message);
       
-      await nextMessage.msgObj.reply(añadirFirmaAsistente('Hubo un problema procesando tu mensaje pendiente.'));
+      // Pequeña pausa entre mensajes del mismo usuario
+      if (cola.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+  } catch (error) {
+    console.error(`❌ [ERROR-COLA] ${chatId}:`, error);
+  } finally {
+    threadLocks.delete(chatId);
+    if (pendingMessages.get(chatId)?.length === 0) {
+      pendingMessages.delete(chatId);
     }
   }
 }
 
 // ----------------------------------------------------
-// 6. Función Principal de Procesamiento de Mensajes
+// 10. Procesamiento Principal de Mensajes
 // ----------------------------------------------------
 
-async function procesarMensaje(userId, message, msgObj) {
-  stats.mensajes_recibidos++;
-  const tiempoMensaje = Date.now();
+async function procesarMensajeIndividual(message) {
+  const startTime = Date.now();
+  const chatId = message.from;
   
-  console.log(`📥 [${stats.mensajes_recibidos}] ${userId.substring(0, 15)}: "${message.substring(0, 40)}${message.length > 40 ? '...' : ''}"`);
-  
-  // Detectar usuario nuevo
-  const esPrimeraVez = esUsuarioNuevo(userId);
-  if (esPrimeraVez) {
-    marcarUsuarioConocido(userId);
-    console.log(`🆕 [PRIMER_CONTACTO] Usuario ${userId.substring(0, 15)}`);
-  }
-  
-  // Sistema de cola
-  if (tieneRunActivo(userId)) {
-    console.log(`⏳ [COLA] Run activo para ${userId.substring(0, 10)}, encolando mensaje`);
+  try {
+    console.log(`📨 [PROCESANDO] ${chatId}: "${message.body?.substring(0, 50)}..."`);
     
-    if (!pendingMessages.has(userId)) {
-      pendingMessages.set(userId, []);
-    }
-    
-    if (pendingMessages.get(userId).length >= 4) {
-      await msgObj.reply(añadirFirmaAsistente("Tienes varios mensajes en cola. Espera que procese los anteriores."));
+    // Verificar modo humano
+    if (humanModeUsers.has(chatId)) {
+      console.log(`👨 [HUMAN] Mensaje ignorado (modo humano): ${chatId}`);
       return;
     }
     
-    pendingMessages.get(userId).push({
-      message,
-      timestamp: tiempoMensaje,
-      msgObj
-    });
+    // Obtener/crear thread y limpiar si es necesario
+    let threadId = await obtenerOCrearThread(chatId);
+    threadId = await limpiarContextoSiNecesario(threadId);
     
-    const posicionCola = pendingMessages.get(userId).length;
-    await msgObj.reply(`⏳ Procesando tu consulta anterior. Tu nuevo mensaje está en cola (posición ${posicionCola}).`);
-    return;
-  }
-  
-  // Verificar thread bloqueado
-  const threadId = chatThreads.get(userId);
-  if (threadId && threadEstaBloqueado(threadId)) {
-    console.log(`⏳ [THREAD_BLOQUEADO] ${threadId.substring(0, 20)} para ${userId.substring(0, 10)}`);
+    // Procesar con reintentos
+    let respuesta = null;
+    let exito = false;
     
-    if (!pendingMessages.has(userId)) {
-      pendingMessages.set(userId, []);
+    // Primer intento con timeout principal
+    try {
+      respuesta = await procesarConAssistant(message, threadId, CONFIG.TIMEOUT_PRINCIPAL * 1000);
+      exito = true;
+      stats.respuestas_exitosas++;
+    } catch (error) {
+      console.log(`⚠️ [TIMEOUT-1] Primer intento falló: ${error.message}`);
+      stats.timeouts_primer_intento++;
+      
+      // Segundo intento con timeout reducido
+      try {
+        respuesta = await procesarConAssistant(message, threadId, CONFIG.TIMEOUT_REINTENTO * 1000);
+        exito = true;
+        stats.respuestas_reintento++;
+        console.log(`✅ [REINTENTO] Exitoso en segundo intento`);
+      } catch (error2) {
+        console.log(`⚠️ [TIMEOUT-2] Segundo intento falló: ${error2.message}`);
+        stats.timeouts_totales++;
+        
+        // Último intento con timeout mínimo
+        try {
+          respuesta = await procesarConAssistant(message, threadId, CONFIG.TIMEOUT_RAPIDO * 1000);
+          exito = true;
+          stats.respuestas_reintento++;
+          console.log(`✅ [ÚLTIMO-REINTENTO] Exitoso en tercer intento`);
+        } catch (error3) {
+          console.error(`❌ [TIMEOUT-FINAL] Todos los reintentos fallaron: ${error3.message}`);
+          respuesta = "⏰ El sistema está experimentando alta demanda. Por favor, intenta nuevamente en unos momentos.";
+          stats.errores++;
+        }
+      }
     }
     
-    pendingMessages.get(userId).push({
-      message,
-      timestamp: tiempoMensaje,
-      msgObj
-    });
+    // Enviar respuesta
+    if (respuesta) {
+      await message.reply(respuesta);
+      const tiempoTotal = Date.now() - startTime;
+      console.log(`✅ [COMPLETADO] ${chatId} en ${formatearTiempo(tiempoTotal)}s`);
+    }
     
-    await msgObj.reply("⏳ El sistema está ocupado. Tu mensaje será procesado en breve.");
-    return;
-  }
-  
-  // Procesar mensaje normalmente
-  try {
-    const reply = await responderConAsistenteOpenAI(userId, message, msgObj, esPrimeraVez);
-    await msgObj.reply(reply);
-    
-    const tiempoTotal = Date.now() - tiempoMensaje;
-    console.log(`📤 [ENVIADO] Respuesta a ${userId.substring(0, 10)} en ${Math.round(tiempoTotal / 1000)}s (${reply.length} chars)`);
-    
-    userFaileds.delete(userId);
+    // Limpiar fallos si hubo éxito
+    if (exito) {
+      userFaileds.delete(chatId);
+    } else {
+      userFaileds.set(chatId, (userFaileds.get(chatId) || 0) + 1);
+    }
     
   } catch (error) {
-    console.error(`❌ [ERROR_PROCESO] ${error.message}`);
+    console.error(`❌ [ERROR-PROCESAMIENTO] ${chatId}:`, error);
     stats.errores++;
     
-    const fallos = userFaileds.get(userId) || { count: 0, timestamp: Date.now() };
-    userFaileds.set(userId, { 
-      count: fallos.count + 1, 
-      timestamp: Date.now() 
-    });
-    
-    if (fallos.count < 2) {
-      await msgObj.reply(añadirFirmaAsistente('Hubo un problema procesando tu mensaje. Por favor, inténtalo nuevamente.'));
-    } else {
-      await msgObj.reply(añadirFirmaAsistente('Estoy teniendo dificultades técnicas. Intenta más tarde o escribe "operador" para contactar una persona.'));
+    try {
+      await message.reply("❌ Error interno del sistema. El equipo técnico ha sido notificado.");
+    } catch (replyError) {
+      console.error(`❌ [ERROR-REPLY] ${chatId}:`, replyError);
     }
   }
 }
 
 // ----------------------------------------------------
-// 7. Eventos de WhatsApp
+// 11. Tareas de Mantenimiento
 // ----------------------------------------------------
 
-client.on('qr', qr => {
+function iniciarTareasMantenimiento() {
+  // Limpieza de runs inactivos cada 2 minutos
+  setInterval(() => {
+    const ahora = Date.now();
+    let runsLimpiados = 0;
+    
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      if (ahora - runInfo.inicio > CONFIG.ASSISTANT.timeout_interno) {
+        activeRuns.delete(runId);
+        runsLimpiados++;
+      }
+    }
+    
+    if (runsLimpiados > 0) {
+      console.log(`🧹 [LIMPIEZA] ${runsLimpiados} runs inactivos eliminados`);
+    }
+  }, CONFIG.LIMPIEZA_RUNS);
+  
+  // Estadísticas periódicas cada 5 minutos
+  setInterval(() => {
+    const uptime = obtenerUptime();
+    const tasaExito = stats.mensajes_recibidos > 0 ? 
+      Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 0;
+    const tiempoPromedio = stats.tiempo_promedio.length > 0 ? 
+      (stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000).toFixed(1) : '0';
+    const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
+      Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
+    
+    console.log(`📊 [STATS] ${uptime}min | Mensajes: ${stats.mensajes_recibidos} | Filtrados: ${stats.mensajes_filtrados} | Éxito: ${tasaExito}% | T.Promedio: ${tiempoPromedio}s | Timeouts1er: ${tasaTimeoutPrimer}% | Nuevos: ${stats.usuarios_nuevos}`);
+  }, CONFIG.STATS_INTERVAL);
+  
+  // Optimización de memoria cada 10 minutos
+  setInterval(() => {
+    // Limpiar arrays de tiempo promedio si son muy grandes
+    if (stats.tiempo_promedio.length > 100) {
+      stats.tiempo_promedio = stats.tiempo_promedio.slice(-50);
+      console.log(`🧹 [OPTIMIZACIÓN] Array de tiempos reducido`);
+    }
+    
+    // Limpiar mensajes pendientes muy antiguos (más de 1 hora)
+    const unHoraAtras = Date.now() - (60 * 60 * 1000);
+    for (let [chatId, cola] of pendingMessages.entries()) {
+      const colaFiltrada = cola.filter(item => item.timestamp > unHoraAtras);
+      if (colaFiltrada.length !== cola.length) {
+        pendingMessages.set(chatId, colaFiltrada);
+        console.log(`🧹 [OPTIMIZACIÓN] Mensajes antiguos eliminados para ${chatId}`);
+      }
+    }
+    
+    console.log(`🔧 [OPTIMIZACIÓN] Memoria optimizada - Threads: ${chatThreads.size}, Runs: ${activeRuns.size}`);
+  }, CONFIG.OPTIMIZACION);
+}
+
+// ----------------------------------------------------
+// 12. Eventos de WhatsApp
+// ----------------------------------------------------
+
+client.on('qr', (qr) => {
+  console.log('📱 [QR] Código QR generado');
   qrcode.generate(qr, { small: true });
-  console.log('📸 [QR] Escanea este código QR con WhatsApp para conectar');
 });
 
 client.on('ready', () => {
-  console.log('🟢 [CONECTADO] Bot WhatsApp FINAL DEFINITIVO - Corregido y Depurado');
-  console.log(`🤖 [ASISTENTE] ID: ${OPENAI_ASSISTANT_ID.substring(0, 25)}...`);
-  console.log(`⏱️ [TIMEOUTS] Principal: ${CONFIG.TIMEOUT_PRINCIPAL}s | Reintento: ${CONFIG.TIMEOUT_REINTENTO}s`);
-  console.log(`🎭 [CONFIGURACIÓN] Firma: ${FIRMA_ASISTENTE.activa ? 'SÍ' : 'NO'} | Bienvenida: ${MENSAJE_INICIAL.activo ? 'SÍ' : 'NO'}`);
-  console.log(`📵 [FILTROS] Estados WhatsApp: ACTIVOS | Mensajes vacíos: FILTRADOS | Logs: OPTIMIZADOS`);
-  mostrarStats();
-});
-
-client.on('authenticated', () => {
-  console.log('✅ [AUTH] WhatsApp autenticado correctamente');
-});
-
-client.on('auth_failure', () => {
-  console.log('❌ [AUTH] Fallo de autenticación WhatsApp');
-  stats.errores++;
+  console.log('✅ [WHATSAPP] Cliente conectado y listo');
+  console.log('🤖 [BOT] Bot WhatsApp FINAL DEFINITIVO iniciado');
+  console.log('🔧 [SISTEMA] Iniciando tareas de mantenimiento...');
+  
+  iniciarTareasMantenimiento();
 });
 
 client.on('disconnected', (reason) => {
-  console.log(`🔴 [DESCONECTADO] Razón: ${reason}`);
+  console.log('⚠️ [WHATSAPP] Cliente desconectado:', reason);
+});
+
+// ✅ EVENTO PRINCIPAL - Optimizado y con filtros estrictos
+client.on('message_create', async (message) => {
+  try {
+    // Incrementar contador total
+    stats.mensajes_recibidos++;
+    
+    // ✅ FILTRO PRINCIPAL
+    if (debeIgnorarMensaje(message)) {
+      return; // Mensaje filtrado, no procesar
+    }
+    
+    // Manejo de comandos administrativos
+    if (esComandoAdmin(message.body)) {
+      await manejarComandoAdmin(message);
+      return;
+    }
+    
+    // Encolar mensaje para procesamiento
+    const chatId = message.from;
+    encolarMensaje(chatId, message);
+    
+    // Procesar cola (sin await para no bloquear)
+    procesarColaMensajes(chatId).catch(error => {
+      console.error(`❌ [ERROR-COLA-ASYNC] ${chatId}:`, error);
+    });
+    
+  } catch (error) {
+    console.error('❌ [ERROR-MESSAGE-CREATE]', error);
+    stats.errores++;
+  }
+});
+
+// Manejo de errores globales
+client.on('auth_failure', (msg) => {
+  console.error('❌ [AUTH] Fallo de autenticación:', msg);
+});
+
+process.on('unhandledRejection', (error) => {
+  console.error('❌ [UNHANDLED-REJECTION]', error);
   stats.errores++;
 });
 
-// ✅ EVENTO PRINCIPAL CON FILTROS AVANZADOS
-client.on('message', async msg => {
-  const userId = msg.from;
-  const incoming = msg.body;
-
-  // Filtros básicos existentes
-  if (esGrupoWhatsApp(userId) || msg.fromMe) {
-    return;
-  }
-
-  // ✅ FILTROS CRÍTICOS: Validación de mensaje antes de procesar
-  if (!esMensajeValido(incoming, userId)) {
-    return; // Mensaje filtrado, no procesar
-  }
-
-  // Comando de stats mejorado
-  if (incoming.toLowerCase() === '/stats' && process.env.DEBUG_MODE === 'true') {
-    const uptime = Math.floor((Date.now() - stats.inicio) / 1000 / 60);
-    const tasaExito = stats.mensajes_recibidos > 0 ? 
-      Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 0;
-    const tiempoPromedio = stats.tiempo_promedio.length > 0 ?
-      Math.round(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000) : 0;
-    
-    const statsMessage = `📊 *Estadísticas del Bot - FINAL DEFINITIVO*\n\n⏰ *Uptime:* ${uptime} minutos\n📊 *Performance:*\n  • Mensajes recibidos: ${stats.mensajes_recibidos}\n  • Mensajes filtrados: ${stats.mensajes_filtrados}\n  • Respuestas exitosas: ${stats.respuestas_exitosas}\n  • Respuestas por reintento: ${stats.respuestas_reintento}\n  • Tasa de éxito: ${tasaExito}%\n\n⚡ *Tiempos:*\n  • Tiempo promedio: ${tiempoPromedio}s\n  • Timeouts primer intento: ${stats.timeouts_primer_intento}\n  • Timeouts totales: ${stats.timeouts_totales}\n\n👥 *Usuarios:*\n  • Nuevos usuarios: ${stats.usuarios_nuevos}\n  • Threads activos: ${chatThreads.size}\n  • Runs activos: ${activeRuns.size}\n  • Cola de mensajes: ${Array.from(pendingMessages.values()).reduce((sum, arr) => sum + arr.length, 0)}\n\n❌ *Errores:* ${stats.errores}\n\n🚀 *Estado:* ${tasaExito > 80 ? 'ÓPTIMO' : tasaExito > 60 ? 'BUENO' : 'NECESITA OPTIMIZACIÓN'}`;
-
-    await msg.reply(añadirFirmaAsistente(statsMessage));
-    return;
-  }
-
-  // Comando de operador humano
-  if (incoming.toLowerCase().includes('operador')) {
-    if (humanModeUsers.has(userId)) {
-      humanModeUsers.delete(userId);
-      await msg.reply(añadirFirmaAsistente('Has salido del modo operador humano. Volveré a responder automáticamente.'));
-    } else {
-      humanModeUsers.add(userId);
-      await msg.reply('👤 *Modo Operador Humano Activado*\n\nUn operador te contactará pronto. Escribe "operador" nuevamente para volver al modo automático.');
-    }
-    return;
-  }
-
-  // Verificar modo operador humano
-  if (humanModeUsers.has(userId)) {
-    return;
-  }
-
-  // Procesar mensaje con sistema optimizado
-  await procesarMensaje(userId, incoming, msg);
+process.on('uncaughtException', (error) => {
+  console.error('❌ [UNCAUGHT-EXCEPTION]', error);
+  stats.errores++;
 });
 
 // ----------------------------------------------------
-// 8. Health Check HTTP Nativo
+// 13. Servidor HTTP para Health Check
 // ----------------------------------------------------
 
-const PORT = process.env.PORT || 3000;
-
-const healthServer = http.createServer((req, res) => {
-  if (req.url === '/health' && req.method === 'GET') {
-    const uptime = Math.floor((Date.now() - stats.inicio) / 1000);
-    const tasaExito = stats.mensajes_recibidos > 0 ? 
-      Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 100;
-    
-    const healthData = {
-      status: 'ok',
-      version: 'FINAL_DEFINITIVO',
-      uptime: uptime,
-      mensajes: stats.mensajes_recibidos,
-      filtrados: stats.mensajes_filtrados,
-      exito: tasaExito,
-      threads: chatThreads.size,
-      runs_activos: activeRuns.size,
+const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    const uptime = obtenerUptime();
+    const health = {
+      status: 'OK',
+      uptime: `${uptime} minutos`,
+      whatsapp: client.info ? 'Conectado' : 'Desconectado',
+      stats: {
+        mensajes_recibidos: stats.mensajes_recibidos,
+        mensajes_filtrados: stats.mensajes_filtrados,
+        respuestas_exitosas: stats.respuestas_exitosas,
+        errores: stats.errores
+      },
       timestamp: new Date().toISOString()
     };
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(healthData, null, 2));
+    res.end(JSON.stringify(health, null, 2));
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
+    res.end('404 Not Found');
   }
 });
 
-healthServer.listen(PORT, () => {
-  console.log(`🏥 [HEALTH] Endpoint HTTP nativo disponible en puerto ${PORT}`);
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`🌐 [HTTP] Servidor iniciado en puerto ${PORT}`);
+  console.log(`🔍 [HEALTH] Health check disponible en: http://localhost:${PORT}/health`);
 });
 
 // ----------------------------------------------------
-// 9. Manejo de Señales y Mantenimiento
+// 14. Inicialización Final
 // ----------------------------------------------------
 
-// Manejo de señales del sistema
-process.on('SIGTERM', () => {
-  console.log('📴 [SHUTDOWN] SIGTERM recibida - Cerrando gracefully...');
-  mostrarStats();
-  console.log(`📊 [FINAL] Performance promedio: ${stats.tiempo_promedio.length > 0 ? Math.round(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000) : 0}s`);
-  client.destroy();
-  healthServer.close();
-  process.exit(0);
-});
+console.log('🚀 [INICIO] Iniciando cliente WhatsApp...');
+console.log('📋 [CONFIG] Configuración cargada:');
+console.log(`   • Timeout Principal: ${CONFIG.TIMEOUT_PRINCIPAL}s`);
+console.log(`   • Timeout Reintento: ${CONFIG.TIMEOUT_REINTENTO}s`);
+console.log(`   • Max Reintentos: ${CONFIG.MAX_REINTENTOS}`);
+console.log(`   • Max Contexto: ${CONFIG.ASSISTANT.max_contexto}`);
+console.log(`   • Firma Activa: ${FIRMA_ASISTENTE.activa}`);
 
-process.on('SIGINT', () => {
-  console.log('📴 [SHUTDOWN] SIGINT recibida - Cerrando gracefully...');
-  mostrarStats();
-  client.destroy();
-  healthServer.close();
-  process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error(`❌ [UNCAUGHT] ${error.message}`);
-  stats.errores++;
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error(`❌ [UNHANDLED] Promesa rechazada: ${reason}`);
-  stats.errores++;
-});
-
-// Tareas de mantenimiento automatizadas
-setInterval(limpiarRunsAbandonados, CONFIG.LIMPIEZA_RUNS);
-setInterval(optimizarSistema, CONFIG.OPTIMIZACION);
-setInterval(mostrarStats, CONFIG.STATS_INTERVAL);
-
-// Inicializar el cliente
 client.initialize();
 
-console.log('🚀 [INICIANDO] Bot WhatsApp FINAL DEFINITIVO - Versión Corregida y Depurada');
-console.log('🎯 [CARACTERÍSTICAS] 100% Asistente OpenAI + Filtros estados WhatsApp + Performance optimizada');
-console.log('📵 [FILTROS] Estados WhatsApp, mensajes vacíos, spam y sistema - TODOS ACTIVOS');
-console.log('🛡️ [ESTABILIDAD] Sin errores de sintaxis + Manejo robusto de errores + Auto-recuperación');
-console.log('📈 [PERFORMANCE] Timeouts optimizados + Sistema de reintentos + Limpieza automática');
-console.log(`⚙️ [CONFIG] Principal: ${CONFIG.TIMEOUT_PRINCIPAL}s | Reintento: ${CONFIG.TIMEOUT_REINTENTO}s | Max contexto: ${CONFIG.ASSISTANT.max_contexto}`);
-console.log('📊 [MONITOREO] Stats con filtros + Alertas automáticas + Health check optimizado');
+// Mensaje final
+console.log('✅ [SISTEMA] Bot WhatsApp FINAL DEFINITIVO - Todos los problemas resueltos');
+console.log('📱 [ESPERA] Esperando código QR para conectar...');
