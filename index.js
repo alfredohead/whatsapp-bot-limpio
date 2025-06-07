@@ -1,21 +1,26 @@
 // index.js FINAL DEFINITIVO - Bot WhatsApp Corregido y Depurado
-// Versión estable con todos los problemas solucionados
+// Versión estable con gestión mejorada de runs concurrentes
+
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { OpenAI } = require('openai');
 const http = require('http');
+
 // ----------------------------------------------------
 // 1. Configuración y Validación
 // ----------------------------------------------------
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
+
 if (!OPENAI_API_KEY || !OPENAI_ASSISTANT_ID) {
   console.error('❌ [CRÍTICO] Variables de entorno faltantes');
   process.exit(1);
 }
+
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 console.log('✅ [OpenAI] Configuración validada correctamente');
+
 // Configuración optimizada
 const CONFIG = {
   TIMEOUT_PRINCIPAL: 45,
@@ -31,15 +36,17 @@ const CONFIG = {
     max_contexto: 12
   }
 };
-// ✅ CONFIGURACIÓN CORREGIDA - Sin errores de sintaxis
+
 const FIRMA_ASISTENTE = {
   sufijo: "\n\n🤖 _Asistente IA - Municipalidad San Martín_",
   activa: true
 };
+
 const MENSAJE_INICIAL = {
   activo: true,
   prompt: "Actúa como si fuera el primer contacto. Salúdalo profesionalmente como asistente de la Municipalidad de San Martín."
 };
+
 // ----------------------------------------------------
 // 2. Cliente WhatsApp Optimizado
 // ----------------------------------------------------
@@ -63,6 +70,7 @@ const client = new Client({
     dataPath: './session'
   })
 });
+
 // ----------------------------------------------------
 // 3. Variables Globales
 // ----------------------------------------------------
@@ -73,7 +81,7 @@ const activeRuns = new Map();
 const pendingMessages = new Map();  
 const threadLocks = new Map();      
 const usuariosConocidos = new Set();
-// Stats mejoradas con contador de filtros
+
 const stats = {
   mensajes_recibidos: 0,
   mensajes_filtrados: 0,
@@ -83,36 +91,46 @@ const stats = {
   timeouts_totales: 0,
   usuarios_nuevos: 0,
   errores: 0,
+  runs_cancelados: 0,  // NUEVO: Contador de runs cancelados
   tiempo_promedio: [],
   inicio: Date.now()
 };
+
 // ----------------------------------------------------
 // 4. Funciones de Utilidad Básicas
 // ----------------------------------------------------
+
 function limpiarNumero(numero) {
   return numero?.replace(/[^\d]/g, '') || '';
 }
+
 function formatearTiempo(ms) {
   return (ms / 1000).toFixed(1);
 }
+
 function obtenerUptime() {
   return Math.floor((Date.now() - stats.inicio) / 1000 / 60);
 }
+
 // ----------------------------------------------------
 // 5. Filtros de Mensajes Estrictos
 // ----------------------------------------------------
+
 function esGrupo(chatId) {
   return chatId.includes('@g.us');
 }
+
 function esBot(message) {
   return message.fromMe || 
          message.from === 'status@broadcast' ||
          message.author?.includes('bot');
 }
+
 function esComandoAdmin(body) {
-  const comandos = ['!stats', '!status', '!help', '!human', '!ai'];
+  const comandos = ['!stats', '!status', '!help', '!human', '!ai', '!cleanup'];
   return comandos.some(cmd => body.toLowerCase().startsWith(cmd));
 }
+
 function esSpamOVacio(body) {
   if (!body || body.trim().length === 0) return true;
   if (body.length < 3) return true;
@@ -125,7 +143,7 @@ function esSpamOVacio(body) {
   
   return spamPatterns.some(pattern => pattern.test(body.trim()));
 }
-// FILTRO PRINCIPAL - Consolidado y mejorado
+
 function debeIgnorarMensaje(message) {
   try {
     const body = message.body?.trim() || '';
@@ -169,9 +187,11 @@ function debeIgnorarMensaje(message) {
     return true;
   }
 }
+
 // ----------------------------------------------------
 // 6. Gestión de Threads y Contexto
 // ----------------------------------------------------
+
 async function obtenerOCrearThread(chatId) {
   if (!chatThreads.has(chatId)) {
     try {
@@ -185,6 +205,7 @@ async function obtenerOCrearThread(chatId) {
   }
   return chatThreads.get(chatId);
 }
+
 async function limpiarContextoSiNecesario(threadId) {
   try {
     const messages = await openai.beta.threads.messages.list(threadId);
@@ -211,9 +232,71 @@ async function limpiarContextoSiNecesario(threadId) {
     return threadId;
   }
 }
+
 // ----------------------------------------------------
-// 7. Procesamiento de Mensajes con Assistant
+// 7. ✅ GESTIÓN MEJORADA DE RUNS CONCURRENTES
 // ----------------------------------------------------
+
+// ✅ NUEVA FUNCIÓN: Cancelar runs activos en un thread
+async function cancelarRunsActivosEnThread(threadId) {
+  try {
+    const runsACancelar = [];
+    
+    // Buscar runs activos en el thread
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      if (runInfo.threadId === threadId) {
+        runsACancelar.push(runId);
+      }
+    }
+    
+    if (runsACancelar.length > 0) {
+      console.log(`🛑 [CANCEL] Cancelando ${runsACancelar.length} runs activos en thread ${threadId}`);
+      
+      for (let runId of runsACancelar) {
+        try {
+          await openai.beta.threads.runs.cancel(threadId, runId);
+          activeRuns.delete(runId);
+          stats.runs_cancelados++;
+          console.log(`✅ [CANCEL-OK] Run cancelado: ${runId}`);
+        } catch (cancelError) {
+          console.log(`⚠️ [CANCEL-ERROR] No se pudo cancelar ${runId}: ${cancelError.message}`);
+          activeRuns.delete(runId); // Eliminar anyway
+        }
+      }
+      
+      // Pausa para asegurar la cancelación
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+    
+  } catch (error) {
+    console.error('❌ [ERROR-CANCEL-RUNS]', error);
+  }
+}
+
+// ✅ NUEVA FUNCIÓN: Limpiar todos los runs de un thread
+async function limpiarRunsDelThread(threadId) {
+  try {
+    const runsAEliminar = [];
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      if (runInfo.threadId === threadId) {
+        runsAEliminar.push(runId);
+      }
+    }
+    
+    for (let runId of runsAEliminar) {
+      activeRuns.delete(runId);
+      console.log(`🧹 [CLEANUP] Run eliminado: ${runId}`);
+    }
+    
+    if (runsAEliminar.length > 0) {
+      console.log(`🧹 [CLEANUP-COMPLETE] ${runsAEliminar.length} runs limpiados del thread ${threadId}`);
+    }
+  } catch (error) {
+    console.error('❌ [ERROR-CLEANUP-RUNS]', error);
+  }
+}
+
+// ✅ FUNCIÓN MEJORADA: Procesamiento con gestión de runs
 async function procesarConAssistant(message, threadId, timeoutMs = CONFIG.TIMEOUT_PRINCIPAL * 1000) {
   const startTime = Date.now();
   
@@ -227,6 +310,9 @@ async function procesarConAssistant(message, threadId, timeoutMs = CONFIG.TIMEOU
       stats.usuarios_nuevos++;
       console.log(`👋 [NUEVO] Usuario nuevo detectado: ${message.from}`);
     }
+    
+    // ✅ NUEVO: Verificar y cancelar runs activos antes de crear mensaje
+    await cancelarRunsActivosEnThread(threadId);
     
     await openai.beta.threads.messages.create(threadId, {
       role: 'user',
@@ -260,19 +346,18 @@ async function procesarConAssistant(message, threadId, timeoutMs = CONFIG.TIMEOU
   } catch (error) {
     console.error('❌ [ERROR-ASSISTANT]', error);
     
-    for (let [runId, runInfo] of activeRuns.entries()) {
-      if (runInfo.threadId === threadId) {
-        activeRuns.delete(runId);
-        break;
-      }
-    }
+    // ✅ MEJORADO: Limpiar runs activos del thread problemático
+    await limpiarRunsDelThread(threadId);
     
     throw error;
   }
 }
+
+// ✅ FUNCIÓN MEJORADA: Esperar completado con mejor manejo
 async function esperarCompletado(threadId, runId, timeoutMs) {
   const maxTime = Date.now() + timeoutMs;
   const pollInterval = 2000;
+  let lastStatusLog = 0;
   
   while (Date.now() < maxTime) {
     try {
@@ -297,6 +382,13 @@ async function esperarCompletado(threadId, runId, timeoutMs) {
         throw new Error(`Run ${run.status}: ${run.last_error?.message || 'Error desconocido'}`);
       }
       
+      // ✅ MEJORADO: Log de progreso sin spam
+      const tiempoTranscurrido = Date.now() - activeRuns.get(runId)?.inicio;
+      if (tiempoTranscurrido > 20000 && Date.now() - lastStatusLog > 10000) {
+        console.log(`⏰ [PROGRESS] Run ${runId} - ${Math.floor(tiempoTranscurrido/1000)}s - Status: ${run.status}`);
+        lastStatusLog = Date.now();
+      }
+      
       await new Promise(resolve => setTimeout(resolve, pollInterval));
       
     } catch (error) {
@@ -308,11 +400,23 @@ async function esperarCompletado(threadId, runId, timeoutMs) {
     }
   }
   
+  // ✅ MEJORADO: Cancelar run antes de timeout
+  try {
+    console.log(`🛑 [TIMEOUT-CANCEL] Cancelando run por timeout: ${runId}`);
+    await openai.beta.threads.runs.cancel(threadId, runId);
+    stats.runs_cancelados++;
+    console.log(`✅ [TIMEOUT-CANCEL-OK] Run cancelado por timeout`);
+  } catch (cancelError) {
+    console.log(`⚠️ [TIMEOUT-CANCEL-ERROR] ${cancelError.message}`);
+  }
+  
   throw new Error('TIMEOUT: El asistente no respondió en el tiempo esperado');
 }
+
 // ----------------------------------------------------
 // 8. Manejo de Comandos Administrativos
 // ----------------------------------------------------
+
 async function manejarComandoAdmin(message) {
   const body = message.body.toLowerCase().trim();
   const chatId = message.from;
@@ -329,6 +433,10 @@ async function manejarComandoAdmin(message) {
         
       case body.startsWith('!help'):
         await enviarAyuda(message);
+        break;
+        
+      case body.startsWith('!cleanup'):
+        await limpiarRunsGlobales(message);
         break;
         
       case body.startsWith('!human'):
@@ -349,6 +457,42 @@ async function manejarComandoAdmin(message) {
     await message.reply('❌ Error al ejecutar comando.');
   }
 }
+
+// ✅ NUEVA FUNCIÓN: Limpiar runs globales
+async function limpiarRunsGlobales(message) {
+  try {
+    const runsAntesLimpieza = activeRuns.size;
+    
+    console.log(`🧹 [CLEANUP-GLOBAL] Iniciando limpieza de ${runsAntesLimpieza} runs activos`);
+    
+    const threadsAfectados = new Set();
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      threadsAfectados.add(runInfo.threadId);
+      try {
+        await openai.beta.threads.runs.cancel(runInfo.threadId, runId);
+        console.log(`✅ [CLEANUP-CANCEL] Run cancelado: ${runId}`);
+      } catch (error) {
+        console.log(`⚠️ [CLEANUP-CANCEL-ERROR] ${runId}: ${error.message}`);
+      }
+    }
+    
+    activeRuns.clear();
+    stats.runs_cancelados += runsAntesLimpieza;
+    
+    await message.reply(`🧹 *Limpieza Completada*
+
+✅ Runs cancelados: ${runsAntesLimpieza}
+🧵 Threads afectados: ${threadsAfectados.size}
+📊 Total runs cancelados: ${stats.runs_cancelados}
+
+Sistema optimizado y listo.`);
+
+  } catch (error) {
+    console.error('❌ [ERROR-CLEANUP-GLOBAL]', error);
+    await message.reply('❌ Error durante la limpieza global.');
+  }
+}
+
 async function enviarStats(message) {
   const uptime = obtenerUptime();
   const tasaExito = stats.mensajes_recibidos > 0 ? 
@@ -358,7 +502,8 @@ async function enviarStats(message) {
   const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
     Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
     
-  const statsMessage = `📊 *Estadísticas del Bot - FINAL DEFINITIVO*
+  const statsMessage = `📊 *Estadísticas del Bot - MEJORADO*
+
 ⏰ *Uptime:* ${uptime} minutos
 📊 *Performance:*
   • Mensajes recibidos: ${stats.mensajes_recibidos}
@@ -366,48 +511,70 @@ async function enviarStats(message) {
   • Respuestas exitosas: ${stats.respuestas_exitosas}
   • Respuestas por reintento: ${stats.respuestas_reintento}
   • Tasa de éxito: ${tasaExito}%
+
 ⚡ *Tiempos:*
   • Tiempo promedio: ${tiempoPromedio}s
   • Timeouts primer intento: ${stats.timeouts_primer_intento}
   • Timeouts totales: ${stats.timeouts_totales}
+
+🔄 *Gestión de Runs:*
+  • Runs cancelados: ${stats.runs_cancelados}
+  • Runs activos: ${activeRuns.size}
+
 👥 *Usuarios:*
   • Nuevos usuarios: ${stats.usuarios_nuevos}
   • Threads activos: ${chatThreads.size}
-  • Runs activos: ${activeRuns.size}
   • Cola de mensajes: ${Array.from(pendingMessages.values()).reduce((sum, arr) => sum + arr.length, 0)}
+
 ❌ *Errores:* ${stats.errores}
+
 🚀 *Estado:* ${tasaExito > 80 ? 'ÓPTIMO' : tasaExito > 60 ? 'BUENO' : 'NECESITA OPTIMIZACIÓN'}`;
+
   await message.reply(statsMessage);
 }
+
 async function enviarStatus(message) {
-  const status = `🟢 *Bot WhatsApp - Estado DEFINITIVO*
+  const status = `🟢 *Bot WhatsApp - Estado MEJORADO*
+
 ✅ *Sistema:* Operativo
 🔗 *OpenAI:* Conectado
 📱 *WhatsApp:* Activo
 ⚡ *Performance:* ${stats.respuestas_exitosas}/${stats.mensajes_recibidos} éxitos
 🧵 *Threads:* ${chatThreads.size} activos
 🔄 *Runs:* ${activeRuns.size} ejecutándose
-*Versión:* Final Definitiva - Todos los problemas resueltos`;
+
+*Versión:* Mejorada - Gestión de runs optimizada`;
+
   await message.reply(status);
 }
+
 async function enviarAyuda(message) {
   const ayuda = `📋 *Comandos Disponibles:*
+
 🔹 *!stats* - Estadísticas detalladas
 🔹 *!status* - Estado del sistema  
 🔹 *!help* - Esta ayuda
+🔹 *!cleanup* - Limpiar runs activos
 🔹 *!human* - Desactivar IA (modo manual)
 🔹 *!ai* - Reactivar IA
+
 💡 *Uso Normal:*
 Simplemente envía tu mensaje y el asistente responderá automáticamente.
+
 🚫 *Limitaciones:*
 • No funciona en grupos
 • Mensajes muy cortos son filtrados
-• Timeouts automáticos por seguridad`;
+• Timeouts automáticos por seguridad
+
+🔧 *Nuevo:* Gestión optimizada de runs concurrentes`;
+
   await message.reply(ayuda);
 }
+
 // ----------------------------------------------------
 // 9. Sistema de Cola de Mensajes
 // ----------------------------------------------------
+
 function encolarMensaje(chatId, message) {
   if (!pendingMessages.has(chatId)) {
     pendingMessages.set(chatId, []);
@@ -417,6 +584,7 @@ function encolarMensaje(chatId, message) {
     timestamp: Date.now()
   });
 }
+
 async function procesarColaMensajes(chatId) {
   if (threadLocks.has(chatId)) {
     return;
@@ -447,9 +615,11 @@ async function procesarColaMensajes(chatId) {
     }
   }
 }
+
 // ----------------------------------------------------
 // 10. Procesamiento Principal de Mensajes
 // ----------------------------------------------------
+
 async function procesarMensajeIndividual(message) {
   const startTime = Date.now();
   const chatId = message.from;
@@ -521,23 +691,37 @@ async function procesarMensajeIndividual(message) {
     }
   }
 }
+
 // ----------------------------------------------------
 // 11. Tareas de Mantenimiento
 // ----------------------------------------------------
+
 function iniciarTareasMantenimiento() {
+  // ✅ MEJORADO: Limpieza de runs más agresiva
   setInterval(() => {
     const ahora = Date.now();
     let runsLimpiados = 0;
     
     for (let [runId, runInfo] of activeRuns.entries()) {
-      if (ahora - runInfo.inicio > CONFIG.ASSISTANT.timeout_interno) {
+      const tiempoActivo = ahora - runInfo.inicio;
+      
+      // Limpiar runs que llevan más tiempo del timeout interno
+      if (tiempoActivo > CONFIG.ASSISTANT.timeout_interno) {
         activeRuns.delete(runId);
         runsLimpiados++;
+        
+        // ✅ NUEVO: Intentar cancelar el run también
+        try {
+          openai.beta.threads.runs.cancel(runInfo.threadId, runId).catch(() => {});
+        } catch (error) {
+          // Ignorar errores de cancelación
+        }
       }
     }
     
     if (runsLimpiados > 0) {
       console.log(`🧹 [LIMPIEZA] ${runsLimpiados} runs inactivos eliminados`);
+      stats.runs_cancelados += runsLimpiados;
     }
   }, CONFIG.LIMPIEZA_RUNS);
   
@@ -550,7 +734,7 @@ function iniciarTareasMantenimiento() {
     const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
       Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
     
-    const mensajeStats = `📊 [STATS] ${uptime}min | Mensajes: ${stats.mensajes_recibidos} | Filtrados: ${stats.mensajes_filtrados} | Éxito: ${tasaExito}% | T.Promedio: ${tiempoPromedio}s | Timeouts1er: ${tasaTimeoutPrimer}% | Nuevos: ${stats.usuarios_nuevos}`;
+    const mensajeStats = `📊 [STATS] ${uptime}min | Mensajes: ${stats.mensajes_recibidos} | Filtrados: ${stats.mensajes_filtrados} | Éxito: ${tasaExito}% | T.Promedio: ${tiempoPromedio}s | Timeouts1er: ${tasaTimeoutPrimer}% | Nuevos: ${stats.usuarios_nuevos} | RunsCancelados: ${stats.runs_cancelados}`;
     console.log(mensajeStats);
   }, CONFIG.STATS_INTERVAL);
   
@@ -572,23 +756,28 @@ function iniciarTareasMantenimiento() {
     console.log(`🔧 [OPTIMIZACIÓN] Memoria optimizada - Threads: ${chatThreads.size}, Runs: ${activeRuns.size}`);
   }, CONFIG.OPTIMIZACION);
 }
+
 // ----------------------------------------------------
 // 12. Eventos de WhatsApp
 // ----------------------------------------------------
+
 client.on('qr', (qr) => {
   console.log('📱 [QR] Código QR generado');
   qrcode.generate(qr, { small: true });
 });
+
 client.on('ready', () => {
   console.log('✅ [WHATSAPP] Cliente conectado y listo');
-  console.log('🤖 [BOT] Bot WhatsApp FINAL DEFINITIVO iniciado');
+  console.log('🤖 [BOT] Bot WhatsApp MEJORADO iniciado');
   console.log('🔧 [SISTEMA] Iniciando tareas de mantenimiento...');
   
   iniciarTareasMantenimiento();
 });
+
 client.on('disconnected', (reason) => {
   console.log('⚠️ [WHATSAPP] Cliente desconectado:', reason);
 });
+
 client.on('message_create', async (message) => {
   try {
     stats.mensajes_recibidos++;
@@ -614,20 +803,25 @@ client.on('message_create', async (message) => {
     stats.errores++;
   }
 });
+
 client.on('auth_failure', (msg) => {
   console.error('❌ [AUTH] Fallo de autenticación:', msg);
 });
+
 process.on('unhandledRejection', (error) => {
   console.error('❌ [UNHANDLED-REJECTION]', error);
   stats.errores++;
 });
+
 process.on('uncaughtException', (error) => {
   console.error('❌ [UNCAUGHT-EXCEPTION]', error);
   stats.errores++;
 });
+
 // ----------------------------------------------------
 // 13. Servidor HTTP para Health Check
 // ----------------------------------------------------
+
 const server = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
     const uptime = obtenerUptime();
@@ -639,9 +833,12 @@ const server = http.createServer((req, res) => {
         mensajes_recibidos: stats.mensajes_recibidos,
         mensajes_filtrados: stats.mensajes_filtrados,
         respuestas_exitosas: stats.respuestas_exitosas,
+        runs_cancelados: stats.runs_cancelados,
+        runs_activos: activeRuns.size,
         errores: stats.errores
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      version: 'MEJORADO_RUNS'
     };
     
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -651,14 +848,17 @@ const server = http.createServer((req, res) => {
     res.end('404 Not Found');
   }
 });
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`🌐 [HTTP] Servidor iniciado en puerto ${PORT}`);
   console.log(`🔍 [HEALTH] Health check disponible en: http://localhost:${PORT}/health`);
 });
+
 // ----------------------------------------------------
 // 14. Inicialización Final
 // ----------------------------------------------------
+
 console.log('🚀 [INICIO] Iniciando cliente WhatsApp...');
 console.log('📋 [CONFIG] Configuración cargada:');
 console.log(`   • Timeout Principal: ${CONFIG.TIMEOUT_PRINCIPAL}s`);
@@ -666,6 +866,8 @@ console.log(`   • Timeout Reintento: ${CONFIG.TIMEOUT_REINTENTO}s`);
 console.log(`   • Max Reintentos: ${CONFIG.MAX_REINTENTOS}`);
 console.log(`   • Max Contexto: ${CONFIG.ASSISTANT.max_contexto}`);
 console.log(`   • Firma Activa: ${FIRMA_ASISTENTE.activa}`);
+
 client.initialize();
-console.log('✅ [SISTEMA] Bot WhatsApp FINAL DEFINITIVO - Todos los problemas resueltos');
+
+console.log('✅ [SISTEMA] Bot WhatsApp MEJORADO - Gestión de runs optimizada');
 console.log('📱 [ESPERA] Esperando código QR para conectar...');
