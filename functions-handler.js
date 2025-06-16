@@ -1,52 +1,31 @@
-
-require('dotenv').config();
-const fs = require('fs');
+const cheerio = require('cheerio');
 const fetch = require('node-fetch');
-const path = require('path');
 
-function obtenerFechaHoy() {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${mes}-${dia}`;
-}
-
-function fetchEfemerideLocal() {
+async function getEfemerides() {
   try {
-    const ruta = path.join(__dirname, 'efemerides.json');
-    const contenido = fs.readFileSync(ruta, 'utf8');
-    const efemerides = JSON.parse(contenido);
-    const clave = obtenerFechaHoy();
-    return efemerides[clave] || "🎖️ No hay efemérides registradas para hoy.";
-  } catch (err) {
-    return "⚠️ No se pudo leer el archivo de efemérides.";
-  }
-}
+    const res = await fetch('https://www.efemeridesargentina.com.ar/');
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    let efemerides = [];
 
-async function fetchClima(ubicacion = "San Martín, Mendoza") {
-  try {
-    const apiKey = process.env.OPENWEATHER_KEY;
-    const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(ubicacion)}&units=metric&lang=es&appid=${apiKey}`);
-    const data = await res.json();
-    const temp = data.main.temp;
-    const desc = data.weather[0].description;
-    const humedad = data.main.humidity;
-    return `🌡️ ${temp}°C, ${desc}, 💧 Humedad: ${humedad}%`;
-  } catch (err) {
-    return "⚠️ No se pudo obtener el clima actual.";
-  }
-}
+    $('ul.list-efemerides li').each((i, el) => {
+      const texto = $(el).text().trim();
+      if (texto.length > 0) efemerides.push(`✅ ${texto}`);
+    });
 
-async function enviarRespuestaFuncion(nombre, contenido, threadId, openai) {
-  return await openai.beta.threads.messages.create(threadId, {
-    role: "function",
-    name: nombre,
-    content: contenido
-  });
+    if (efemerides.length === 0) {
+      return 'No se encontraron efemérides para hoy. 🌤️';
+    }
+
+    return `📅 *Efemérides del día:*
+
+${efemerides.slice(0, 10).join('\n')}`;
+  } catch (err) {
+    console.error("Error al obtener efemérides:", err);
+    return "Lo siento, no pude obtener las efemérides en este momento.";
+  }
 }
 
 module.exports = {
-  fetchEfemeride: fetchEfemerideLocal,
-  fetchClima,
-  enviarRespuestaFuncion
+  getEfemerides
 };
