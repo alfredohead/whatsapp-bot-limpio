@@ -1,12 +1,12 @@
 // index.js – Versión final del bot de WhatsApp con funciones completas
 
-require('dotenv').config();
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const { OpenAI } = require('openai');
-const { getWeather, getEfemeride } = require('./functions-handler');
+require("dotenv").config();
+const { Client, LocalAuth } = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+const { OpenAI } = require("openai");
+const { getWeather, getEfemeride } = require("./functions-handler");
 
-const SESSION_PATH = './session';
+const SESSION_PATH = "./session";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
@@ -16,34 +16,74 @@ const client = new Client({
   authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
   puppeteer: {
     headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium",
     args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process', // This can help in resource-constrained environments
-      '--disable-gpu'
-    ]
-  }
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process", // This can help in resource-constrained environments
+      "--disable-gpu",
+      "--disable-setuid-sandbox",
+      "--disable-extensions",
+      "--disable-sync",
+      "--disable-features=site-per-process",
+      "--incognito",
+      "--disable-web-security",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
+      "--disable-ipc-flooding-protection",
+      "--disable-component-update",
+      "--disable-domain-reliability",
+      "--disable-breakpad",
+      "--disable-crash-reporter",
+      "--disable-hang-monitor",
+      "--disable-notifications",
+      "--disable-offer-store-unmasked-wallet-cards",
+      "--disable-print-preview",
+      "--disable-prompt-on-repost",
+      "--disable-speech-api",
+      "--disable-tab-for-desktop-share",
+      "--disable-translate",
+      "--disable-voice-input",
+      "--disable-wake-on-wifi",
+      "--enable-async-dns",
+      "--enable-features=NetworkService,NetworkServiceInProcess",
+      "--enable-logging",
+      "--force-color-profile=srgb",
+      "--metrics-recording-only",
+      "--no-default-browser-check",
+      "--no-first-run",
+      "--no-pings",
+      "--no-zygote",
+      "--password-store=basic",
+      "--use-gl=swiftshader",
+      "--use-mock-keychain",
+      "--window-size=1920,1080",
+    ],
+  },
 });
 
-client.on('qr', (qr) => {
-  console.log('🔹 Escanea este QR para iniciar sesión:');
+client.on("qr", (qr) => {
+  console.log("🔹 Escanea este QR para iniciar sesión:");
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
-  console.log('✅ Bot listo y conectado.');
+client.on("ready", () => {
+  console.log("✅ Bot listo y conectado.");
 });
 
-client.on('message', async (msg) => {
+client.on("message", async (msg) => {
   const { from, body, type, isStatus, isGroupMsg } = msg;
 
   // Ignorar mensajes de estados o grupos
-  if (isStatus || from.endsWith('@g.us')) return;
+  if (isStatus || from.endsWith("@g.us")) return;
 
   // Log básico
   console.log(`[📩] Mensaje de ${from}:`, body);
@@ -52,13 +92,13 @@ client.on('message', async (msg) => {
     const texto = body.toLowerCase();
 
     // Comando especial: Clima
-    if (texto.includes('clima')) {
+    if (texto.includes("clima")) {
       const clima = await getWeather();
       return msg.reply(clima);
     }
 
     // Comando especial: Efemérides
-    if (texto.includes('efeméride') || texto.includes('efemeride') || texto.includes('pasó un día como hoy')) {
+    if (texto.includes("efeméride") || texto.includes("efemeride") || texto.includes("pasó un día como hoy")) {
       const info = getEfemeride();
       return msg.reply(info);
     }
@@ -66,20 +106,19 @@ client.on('message', async (msg) => {
     // Respuesta general con asistente OpenAI
     const respuesta = await openai.beta.threads.createAndRun({
       assistant_id: ASSISTANT_ID,
-      thread: { messages: [{ role: 'user', content: body }] },
+      thread: { messages: [{ role: "user", content: body }] },
     });
 
     const partes = respuesta?.data?.latest_run?.step_details?.tool_calls;
-    const content = partes?.[0]?.output?.text ?? '🤖 Lo siento, no tengo una respuesta clara en este momento.';
+    const content = partes?.[0]?.output?.text ?? "🤖 Lo siento, no tengo una respuesta clara en este momento.";
 
-    return msg.reply(`${content}
-
-🤖 Asistente Virtual
-Municipalidad de General San Martín.`);
+    return msg.reply(`${content}\n\n🤖 Asistente Virtual\nMunicipalidad de General San Martín.`);
   } catch (error) {
-    console.error('❌ Error:', error.message);
-    return msg.reply('⚠️ Hubo un error procesando tu mensaje. Intenta nuevamente más tarde.');
+    console.error("❌ Error:", error.message);
+    return msg.reply("⚠️ Hubo un error procesando tu mensaje. Intenta nuevamente más tarde.");
   }
 });
 
 client.initialize();
+
+
