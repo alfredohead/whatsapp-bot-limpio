@@ -1,75 +1,71 @@
-// index.js - Bot de WhatsApp conectado a Assistant OpenAI
+// index.js – Versión final del bot de WhatsApp con funciones completas
+
 require('dotenv').config();
-const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const app = express();
+const qrcode = require('qrcode-terminal');
+const { OpenAI } = require('openai');
+const { getWeather, getEfemeride } = require('./functions-handler');
 
-// Configurar el servidor Express
-app.get('/', (req, res) => {
-    res.send('WhatsApp Bot is running!');
-});
+const SESSION_PATH = './session';
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
-// Iniciar el servidor
-const port = process.env.PORT || 3000;
-app.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
-});
+const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
-// Iniciar el cliente de WhatsApp
 const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        args: ['--no-sandbox']
-    }
+  authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
+  puppeteer: false, // Eliminado Puppeteer
 });
 
 client.on('qr', (qr) => {
-  console.log('🔷 Escanea el siguiente QR para iniciar sesión:');
+  console.log('🔹 Escanea este QR para iniciar sesión:');
   qrcode.generate(qr, { small: true });
 });
 
 client.on('ready', () => {
-  console.log('✅ Bot de WhatsApp conectado correctamente.');
+  console.log('✅ Bot listo y conectado.');
 });
 
 client.on('message', async (msg) => {
-  if (msg.from.includes('@g.us')) return;  // Ignora grupos
-  if (msg.type === 'status') return;       // Ignora estados
+  const { from, body, type, isStatus, isGroupMsg } = msg;
 
-  const body = msg.body.toLowerCase().trim();
+  // Ignorar mensajes de estados o grupos
+  if (isStatus || from.endsWith('@g.us')) return;
 
-  if (body.includes('efeméride')) {
-    const efem = getEfemeride();
-    client.sendMessage(msg.from, `📅 ${efem}`);
-    return;
-  }
-
-  if (body.includes('clima')) {
-    const clima = await getWeather();
-    client.sendMessage(msg.from, clima);
-    return;
-  }
+  // Log básico
+  console.log(`[📩] Mensaje de ${from}:`, body);
 
   try {
-    const threadId = `wa_${msg.from.replace(/[^a-zA-Z0-9]/g, '')}`;
-    const response = await openai.beta.threads.messages.create(
-      threadId,
-      {
-        role: 'user',
-        content: msg.body
-      },
-      { assistant_id: ASSISTANT_ID }
-    );
+    const texto = body.toLowerCase();
 
-    const reply = response.data?.[0]?.content?.[0]?.text?.value;
-    if (reply) {
-      client.sendMessage(msg.from, reply);
-    } else {
-      client.sendMessage(msg.from, '⚠️ No entendí tu mensaje.');
+    // Comando especial: Clima
+    if (texto.includes('clima')) {
+      const clima = await getWeather();
+      return msg.reply(clima);
     }
-  } catch (err) {
-    console.error('❌ Error al enviar mensaje al Assistant:', err.message);
-    client.sendMessage(msg.from, '⚠️ Ocurrió un error al procesar tu mensaje.');
+
+    // Comando especial: Efemérides
+    if (texto.includes('efeméride') || texto.includes('efemeride') || texto.includes('pasó un día como hoy')) {
+      const info = getEfemeride();
+      return msg.reply(info);
+    }
+
+    // Respuesta general con asistente OpenAI
+    const respuesta = await openai.beta.threads.createAndRun({
+      assistant_id: ASSISTANT_ID,
+      thread: { messages: [{ role: 'user', content: body }] },
+    });
+
+    const partes = respuesta?.data?.latest_run?.step_details?.tool_calls;
+    const content = partes?.[0]?.output?.text ?? '🤖 Lo siento, no tengo una respuesta clara en este momento.';
+
+    return msg.reply(`${content}
+
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`);
+  } catch (error) {
+    console.error('❌ Error:', error.message);
+    return msg.reply('⚠️ Hubo un error procesando tu mensaje. Intenta nuevamente más tarde.');
   }
 });
 
