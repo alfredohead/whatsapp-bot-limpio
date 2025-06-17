@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
   libcups2 \
   libdbus-1-3 \
   libgdk-pixbuf2.0-0 \
+  libgdk-pixbuf2.0-dev \
   libnspr4 \
   libnss3 \
   libx11-xcb1 \
@@ -30,6 +31,10 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 # Crea el directorio de la app
 WORKDIR /app
 
+# Crea un usuario no-root y cambia a él
+RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
+USER nodeuser
+
 # Copia package.json y package-lock.json
 COPY package*.json ./
 
@@ -44,3 +49,5 @@ EXPOSE 3000
 
 # Comando para iniciar el bot
 CMD ["node", "index.js"]
+
+
