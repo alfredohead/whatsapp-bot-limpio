@@ -23,3 +23,7 @@ gac.json
 
 # Misc
 *.swp
+
+# Session data
+session/
+wwebjs_session/
