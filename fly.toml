@@ -14,3 +14,14 @@ app = "asistente-whatsapp"
 [[mounts]]
   source = "wwebjs_session"
   destination = "/app/session"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2

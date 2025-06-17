@@ -1,21 +1,26 @@
 // index.js - Bot de WhatsApp conectado a Assistant OpenAI
 require('dotenv').config();
+const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const app = express();
 
+// Configurar el servidor Express
+app.get('/', (req, res) => {
+    res.send('WhatsApp Bot is running!');
+});
+
+// Iniciar el servidor
+const port = process.env.PORT || 3000;
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server running on port ${port}`);
+});
+
+// Iniciar el cliente de WhatsApp
 const client = new Client({
+    authStrategy: new LocalAuth(),
     puppeteer: {
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--no-first-run',
-            '--disable-gpu',
-            '--no-default-browser-check',
-            '--disable-extensions'
-        ],
-        headless: true
-    },
-    authStrategy: new LocalAuth()
+        args: ['--no-sandbox']
+    }
 });
 
 client.on('qr', (qr) => {
