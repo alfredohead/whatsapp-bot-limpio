@@ -27,7 +27,8 @@ const client = new Client({
       '--disable-gpu'
       // Considerar '--single-process' solo si hay problemas de recursos extremos,
       // pero puede tener otros efectos secundarios. Por ahora, lo omitimos.
-    ]
+    ],
+    dumpio: true // Añadir esta línea
   }
 });
 
