@@ -4,7 +4,8 @@
   "description": "Bot de WhatsApp minimalista con integración de GPT",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "start:prod": "NODE_ENV=production node index.js"
   },
   "dependencies": {
     "cheerio": "^1.1.0",

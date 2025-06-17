@@ -9,10 +9,18 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
 const client = new Client({
-  authStrategy: new LocalAuth(),
   puppeteer: {
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  }
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu'
+    ]
+  },
+  authStrategy: new LocalAuth({
+    clientId: "whatsapp-bot"
+  })
 });
 
 client.on('qr', (qr) => {
