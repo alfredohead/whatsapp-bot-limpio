@@ -25,3 +25,6 @@ app = "asistente-whatsapp"
   memory = "2gb"
   cpu_kind = "shared"
   cpus = 2
+
+[processes]
+  app = ["/usr/local/bin/entrypoint.sh", "node", "index.js"]
