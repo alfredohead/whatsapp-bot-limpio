@@ -1,31 +1,63 @@
+
+// functions-handler.js - Funciones auxiliares para clima y efemérides
+
 const cheerio = require('cheerio');
 const fetch = require('node-fetch');
+const efemerides = require('./efemerides.json');
 
-async function getEfemerides() {
+function getCurrentDate() {
+  const now = new Date();
+  const day = now.getDate().toString().padStart(2, '0');
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  return `${day}-${month}`;
+}
+
+function getEfemeride() {
+  const today = getCurrentDate();
+  const evento = efemerides[today];
+  if (evento) {
+    return `📅 ${evento}
+
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`;
+  } else {
+    return `📅 Hoy no hay efemérides destacadas registradas.
+
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`;
+  }
+}
+
+async function getWeather() {
   try {
-    const res = await fetch('https://www.efemeridesargentina.com.ar/');
+    const res = await fetch('https://www.tiempo.com/san-martin_mendoza.htm');
     const html = await res.text();
     const $ = cheerio.load(html);
-    let efemerides = [];
 
-    $('ul.list-efemerides li').each((i, el) => {
-      const texto = $(el).text().trim();
-      if (texto.length > 0) efemerides.push(`✅ ${texto}`);
-    });
+    const temperatura = $('.datos-actual .dato-temperatura').text().trim();
+    const estado = $('.datos-actual .estado').text().trim();
 
-    if (efemerides.length === 0) {
-      return 'No se encontraron efemérides para hoy. 🌤️';
+    if (temperatura && estado) {
+      return `🌤️ El clima actual en San Martín, Mendoza es: ${estado}, ${temperatura}
+
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`;
+    } else {
+      return `🌥️ No se pudo obtener el clima actual en este momento.
+
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`;
     }
+  } catch (e) {
+    console.error('Error al obtener clima:', e.message);
+    return `⚠️ No se pudo obtener el clima actual.
 
-    return `📅 *Efemérides del día:*
-
-${efemerides.slice(0, 10).join('\n')}`;
-  } catch (err) {
-    console.error("Error al obtener efemérides:", err);
-    return "Lo siento, no pude obtener las efemérides en este momento.";
+🤖 Asistente Virtual
+Municipalidad de General San Martín.`;
   }
 }
 
 module.exports = {
-  getEfemerides
+  getEfemeride,
+  getWeather
 };
