@@ -14,20 +14,7 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
-  puppeteer: {
-    headless: true,
-    executablePath: '/usr/bin/chromium', // Explicitly set
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process', // This can help in resource-constrained environments
-      '--disable-gpu'
-    ]
-  }
+  puppeteer: false, // This is the critical line
 });
 
 client.on('qr', (qr) => {
