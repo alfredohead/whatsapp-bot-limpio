@@ -14,7 +14,21 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
-  puppeteer: false, // This is the critical line
+  puppeteer: {
+    headless: true,
+    executablePath: '/usr/bin/chromium', // O process.env.PUPPETEER_EXECUTABLE_PATH si se prefiere y está configurado en Dockerfile
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--disable-gpu'
+      // Considerar '--single-process' solo si hay problemas de recursos extremos,
+      // pero puede tener otros efectos secundarios. Por ahora, lo omitimos.
+    ]
+  }
 });
 
 client.on('qr', (qr) => {

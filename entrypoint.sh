@@ -1,6 +1,4 @@
 #!/bin/sh
 set -e
-
-# Execute the main command (passed as arguments to this script, i.e., CMD from Dockerfile)
-# as the 'nodeuser' user.
+# Ejecuta el CMD pasado desde el Dockerfile (ej. "node", "index.js") como 'nodeuser'
 exec gosu nodeuser "$@"
