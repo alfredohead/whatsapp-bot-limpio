@@ -1,26 +1,21 @@
 // index.js - Bot de WhatsApp conectado a Assistant OpenAI
 require('dotenv').config();
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
-const { OpenAI } = require('openai');
-const { getEfemeride, getWeather } = require('./functions-handler');
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
 const client = new Client({
-  puppeteer: {
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu'
-    ]
-  },
-  authStrategy: new LocalAuth({
-    clientId: "whatsapp-bot"
-  })
+    puppeteer: {
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--no-first-run',
+            '--disable-gpu',
+            '--no-default-browser-check',
+            '--disable-extensions'
+        ],
+        headless: true
+    },
+    authStrategy: new LocalAuth()
 });
 
 client.on('qr', (qr) => {
