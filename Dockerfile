@@ -31,15 +31,15 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 # Crea el directorio de la app
 WORKDIR /app
 
-# Crea un usuario no-root y cambia a él
-RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
-USER nodeuser
-
 # Copia package.json y package-lock.json
 COPY package*.json ./
 
-# Instala dependencias
+# Instala dependencias como root
 RUN npm install
+
+# Crea un usuario no-root y cambia a él
+RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
+USER nodeuser
 
 # Copia el resto de los archivos del proyecto
 COPY . .
