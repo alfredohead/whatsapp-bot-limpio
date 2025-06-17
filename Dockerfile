@@ -1,8 +1,10 @@
-# Dockerfile para bot WhatsApp con Puppeteer en Fly.io
-
 FROM node:18
 
-# Instala Chromium y dependencias necesarias
+# Create a non-root user and group
+RUN groupadd -r nodeuser && useradd -r -g nodeuser -m -s /bin/bash nodeuser
+
+# Install Chromium and dependencias necesarias
+# (Ensure this section doesn't conflict with user permissions later)
 RUN apt-get update && apt-get install -y \
   wget \
   ca-certificates \
@@ -27,19 +29,27 @@ RUN apt-get update && apt-get install -y \
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Crea el directorio de la app
+# Create the app directory
 WORKDIR /app
 
-# Copia package.json y package-lock.json
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
-# Instala dependencias
+# Change ownership of /app to nodeuser before npm install, then switch user
+# This ensures node_modules are owned by nodeuser if any native modules are built
+RUN chown -R nodeuser:nodeuser /app
+USER nodeuser
+
+# Install dependencies as nodeuser
 RUN npm install
 
-# Copia el resto de los archivos del proyecto
-COPY . .
+# Copy the rest of the application files and ensure they are owned by nodeuser
+# We need to switch back to root temporarily to chown, then back to nodeuser
+USER root
+COPY --chown=nodeuser:nodeuser . .
+USER nodeuser
 
-# Expone el puerto para Fly.io
+# Expose the port for Fly.io
 EXPOSE 3000
 
 # Comando para iniciar el bot
