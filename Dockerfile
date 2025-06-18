@@ -39,6 +39,10 @@ RUN npm install
 
 # Crea un usuario no-root y cambia a él
 RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
+
+# Asegura que el usuario nodeuser tenga permisos de escritura en el directorio de sesión
+RUN mkdir -p /app/session && chown -R nodeuser:nodejs /app/session
+
 USER nodeuser
 
 # Copia el resto de los archivos del proyecto
