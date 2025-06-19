@@ -2,7 +2,6 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
 const cheerio = require('cheerio');
-const fetch = require('node-fetch');
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {
