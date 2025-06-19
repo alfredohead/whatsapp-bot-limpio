@@ -80,8 +80,20 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
             thread: { messages: [{ role: "user", content: body }] },
           });
 
-          if (run.status === 'completed') {
-            const messagesPage = await openai.beta.threads.messages.list(run.thread_id, { limit: 5, order: 'desc' });
+          let currentRun = run;
+          let runStatus = currentRun.status;
+          const start = Date.now();
+          const MAX_WAIT_MS = 30000;
+
+          while ((runStatus === 'queued' || runStatus === 'in_progress') && (Date.now() - start) < MAX_WAIT_MS) {
+            console.log(`⌛ Esperando respuesta del asistente... (estado: ${runStatus})`);
+            await new Promise(res => setTimeout(res, 1500));
+            currentRun = await openai.beta.threads.runs.retrieve(currentRun.thread_id, currentRun.id);
+            runStatus = currentRun.status;
+          }
+
+          if (runStatus === 'completed') {
+            const messagesPage = await openai.beta.threads.messages.list(currentRun.thread_id, { limit: 5, order: 'desc' });
             const assistantMessages = messagesPage.data.filter(m => m.role === 'assistant');
             if (assistantMessages.length > 0) {
               const latestAssistantMessage = assistantMessages[0]; // Most recent
@@ -92,18 +104,21 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
                 console.log("OpenAI response was not simple text:", latestAssistantMessage.content);
               }
             } else {
-               console.warn("OpenAI Run completed, but no assistant messages found in thread:", run.id);
+               console.warn("OpenAI Run completed, but no assistant messages found in thread:", currentRun.id);
                assistantResponseForUser = "🤖 El asistente procesó tu solicitud pero no generó un mensaje de respuesta visible. Intenta reformular.";
             }
-          } else if (run.status === 'failed') {
-            console.error("❌ OpenAI Run failed. Run ID:", run.id, "Error:", run.last_error);
-            assistantResponseForUser = `⚠️ Hubo un error con el asistente (Fallo: ${run.last_error?.code || 'UnknownError'}). Intenta nuevamente.`;
-          } else if (run.status === 'requires_action') {
-            console.warn("⚠️ OpenAI Run requires action. This bot is not configured to handle this. Run ID:", run.id, "Details:", run.required_action);
+          } else if (runStatus === 'failed') {
+            console.error("❌ OpenAI Run failed. Run ID:", currentRun.id, "Error:", currentRun.last_error);
+            assistantResponseForUser = `⚠️ Hubo un error con el asistente (Fallo: ${currentRun.last_error?.code || 'UnknownError'}). Intenta nuevamente.`;
+          } else if ((Date.now() - start) >= MAX_WAIT_MS) {
+            console.warn(`⌛ Tiempo de espera agotado para el run ${currentRun.id}. Estado actual: ${runStatus}`);
+            assistantResponseForUser = "⌛ Tu solicitud sigue en proceso. Por favor intenta nuevamente en unos segundos.";
+          } else if (runStatus === 'requires_action') {
+            console.warn("⚠️ OpenAI Run requires action. This bot is not configured to handle this. Run ID:", currentRun.id, "Details:", currentRun.required_action);
             assistantResponseForUser = "🤖 El asistente necesita realizar una acción adicional que no puedo completar. Por favor, reformula tu pregunta.";
           } else {
-            console.warn(`⚠️ OpenAI Run ended with unhandled status: ${run.status}. Run ID:`, run.id);
-            assistantResponseForUser = `🤖 El asistente está procesando tu solicitud (estado: ${run.status}). Por favor, espera o intenta de nuevo.`;
+            console.warn(`⚠️ OpenAI Run ended with unhandled status: ${runStatus}. Run ID:`, currentRun.id);
+            assistantResponseForUser = `🤖 El asistente está procesando tu solicitud (estado: ${runStatus}). Por favor, espera o intenta de nuevo.`;
           }
         } catch (openaiError) {
           console.error("❌ Error en la llamada a API de OpenAI:", openaiError.stack); // Log full stack
