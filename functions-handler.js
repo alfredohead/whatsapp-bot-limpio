@@ -1,6 +1,12 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
+
+// TODO: Uncomment cheerio and restore its usage when live weather data fetching in getWeather is reinstated.
+// const cheerio = require('cheerio'); // No longer used by getWeather
+// TODO: Uncomment node-fetch and restore its usage when live weather data fetching in getWeather is reinstated.
+// const fetch = require('node-fetch'); // No longer used by getWeather
 const cheerio = require('cheerio');
+
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {
@@ -10,7 +16,6 @@ function getCurrentDate() {
   return `${day}-${month}`;
 }
 
-// NUEVA FUNCIÓN
 function getCurrentTime() {
   const now = new Date();
   const hours = String(now.getHours()).padStart(2, '0');
@@ -38,37 +43,14 @@ Municipalidad de General San Martín.`;
   }
 }
 
-async function getWeather() {
-  try {
-    const res = await fetch('https://www.tiempo.com/san-martin_mendoza.htm');
-    const html = await res.text();
-    const $ = cheerio.load(html);
-
-    const temperatura = $('.datos-actual .dato-temperatura').text().trim();
-    const estado = $('.datos-actual .estado').text().trim();
-
-    if (temperatura && estado) {
-      return `🌤️ El clima actual en San Martín, Mendoza es: ${estado}, ${temperatura}
-
-🤖 Asistente IA
-Municipalidad de General San Martín.`;
-    } else {
-      return `🌥️ No se pudo obtener el clima actual en este momento.
-
-🤖 Asistente IA
-Municipalidad de General San Martín.`;
-    }
-  } catch (e) {
-    console.error('Error al obtener clima:', e.stack); // Mantengo e.stack de una modificación anterior
-    return `⚠️ No se pudo obtener el clima actual.
-
-🤖 Asistente IA
-Municipalidad de General San Martín.`;
-  }
+async function getWeather() { // The async keyword can be removed if no await is used, but it's harmless.
+  // TODO: Restore live weather fetching. Original data source (tiempo.com) was unavailable. Consider tracking with an issue ID if applicable.
+  console.log('[getWeather] Devolviendo respuesta temporal. Fuente de datos original no disponible.');
+  return `🌦️ Lo siento, el servicio de información meteorológica no está disponible en este momento. Por favor, intenta más tarde.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 }
 
 module.exports = {
   getEfemeride,
   getWeather,
-  getCurrentTime // AÑADIR A EXPORTS
+  getCurrentTime
 };
