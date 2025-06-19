@@ -50,7 +50,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     });
 
     client.on("ready", () => {
-      clearTimeout(readyTimeout); // Limpiar el timeout al recibir 'ready'
+      if (readyTimeout) { // Robustez: limpiar solo si existe
+        clearTimeout(readyTimeout);
+      }
       console.log("🚀 Evento 'ready' de client disparado. Bot listo y conectado.");
     });
 
@@ -187,6 +189,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("🚀 Configurando manejador de evento 'authenticated'...");
     client.on('authenticated', () => {
       console.log('✅ Cliente AUTENTICADO');
+      if (readyTimeout) { // Limpiar timeout anterior si existe
+        clearTimeout(readyTimeout);
+      }
       readyTimeout = setTimeout(() => {
         console.error('❌ TIMEOUT: El evento "ready" no se disparó después de 2 minutos de la autenticación.');
       }, 120000); // 120000 ms = 2 minutos
