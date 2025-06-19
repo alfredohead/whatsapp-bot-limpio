@@ -1,12 +1,7 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
-
-// TODO: Uncomment cheerio and restore its usage when live weather data fetching in getWeather is reinstated.
 // const cheerio = require('cheerio'); // No longer used by getWeather
-// TODO: Uncomment node-fetch and restore its usage when live weather data fetching in getWeather is reinstated.
 // const fetch = require('node-fetch'); // No longer used by getWeather
-const cheerio = require('cheerio');
-
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {
@@ -18,13 +13,23 @@ function getCurrentDate() {
 
 function getCurrentTime() {
   const now = new Date();
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const month = String(now.getMonth() + 1).padStart(2, '0'); // Los meses son 0-indexados
-  const year = now.getFullYear();
+  const optionsDate = {
+    timeZone: 'America/Argentina/Mendoza',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  };
+  const fechaFormateada = now.toLocaleDateString('es-AR', optionsDate);
 
-  return `🕒 Son las ${hours}:${minutes} del ${day}/${month}/${year}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+  const optionsTime = {
+    timeZone: 'America/Argentina/Mendoza',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  };
+  const horaFormateada = now.toLocaleTimeString('es-AR', optionsTime);
+
+  return `🕒 Son las ${horaFormateada} del ${fechaFormateada}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 }
 
 function getEfemeride() {
@@ -44,7 +49,6 @@ Municipalidad de General San Martín.`;
 }
 
 async function getWeather() { // The async keyword can be removed if no await is used, but it's harmless.
-  // TODO: Restore live weather fetching. Original data source (tiempo.com) was unavailable. Consider tracking with an issue ID if applicable.
   console.log('[getWeather] Devolviendo respuesta temporal. Fuente de datos original no disponible.');
   return `🌦️ Lo siento, el servicio de información meteorológica no está disponible en este momento. Por favor, intenta más tarde.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 }
