@@ -1,6 +1,7 @@
 # Dockerfile para bot WhatsApp con Puppeteer en Fly.io
 
 FROM node:18
+ENV DEBUG="puppeteer:*" # Añadido para habilitar logs de Puppeteer
 
 # Instala Chromium y dependencias necesarias
 RUN apt-get update && apt-get install -y \
@@ -49,5 +50,3 @@ EXPOSE 3000
 
 # Comando para iniciar el bot
 CMD ["node", "index.js"]
-
-
