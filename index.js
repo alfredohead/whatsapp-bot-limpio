@@ -5,7 +5,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
-const { getWeather, getEfemeride } = require("./functions-handler");
+const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler"); // MODIFICADO: Importar getCurrentTime
 
 const SESSION_PATH = "./session";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -128,6 +128,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                       output = await getWeather();
                     } else if (toolCall.function.name === 'fetchEfemeride') {
                       output = getEfemeride();
+                    } else if (toolCall.function.name === 'get_current_time') { // MODIFICADO: Manejar get_current_time
+                      output = getCurrentTime();
                     } else if (toolCall.function.name === 'access_web') {
                       output = "Actualmente no puedo acceder a información web externa para esta solicitud.";
                     } else {
@@ -217,5 +219,3 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     process.exit(1); // Salir si hay un error crítico en la inicialización
   }
 })(); // Fin de IIFE
-
-

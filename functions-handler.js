@@ -10,6 +10,18 @@ function getCurrentDate() {
   return `${day}-${month}`;
 }
 
+// NUEVA FUNCIÓN
+function getCurrentTime() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0'); // Los meses son 0-indexados
+  const year = now.getFullYear();
+
+  return `🕒 Son las ${hours}:${minutes} del ${day}/${month}/${year}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+}
+
 function getEfemeride() {
   const today = getCurrentDate();
   const evento = efemerides[today];
@@ -57,5 +69,6 @@ Municipalidad de General San Martín.`;
 
 module.exports = {
   getEfemeride,
-  getWeather
+  getWeather,
+  getCurrentTime // AÑADIR A EXPORTS
 };
