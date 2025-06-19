@@ -19,18 +19,23 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
 
     const client = new Client({
-      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
+      authStrategy: new LocalAuth({
+        clientId: "whatsapp-bot",
+        dataPath: '/app/session'
+      }),
       puppeteer: {
         headless: true,
-        executablePath: executablePath, // Usar la ruta obtenida
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--headless',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
           '--disable-gpu',
-          '--no-zygote'
+          '--disable-software-rasterizer'
         ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
       },
     });
 
@@ -81,6 +86,11 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
         console.error("❌ Error en el manejador de mensajes:", error.stack);
         return msg.reply("⚠️ Hubo un error procesando tu mensaje. Intenta nuevamente más tarde.");
       }
+    });
+
+    // Add error logging
+    client.on('auth_failure', msg => {
+      console.error('❌ Error de autenticación:', msg);
     });
 
     console.log("🚀 Inicializando cliente de WhatsApp...");
