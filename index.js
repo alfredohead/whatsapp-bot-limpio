@@ -200,6 +200,22 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       }
     });
 
+    // Nuevos manejadores de eventos
+    console.log("🚀 Configurando manejador de evento 'authenticated'...");
+    client.on('authenticated', () => {
+      console.log('✅ Cliente AUTENTICADO');
+    });
+
+    console.log("🚀 Configurando manejador de evento 'disconnected'...");
+    client.on('disconnected', (reason) => {
+      console.log('❌ Cliente DESCONECTADO:', reason);
+    });
+
+    console.log("🚀 Configurando manejador de evento 'auth_failure'...");
+    client.on('auth_failure', msg_text => { // Cambiado el nombre del parámetro para evitar confusión con la variable 'msg' externa
+      console.error('❌ FALLO DE AUTENTICACIÓN:', msg_text);
+    });
+
     console.log("🚀 Inicializando cliente de WhatsApp...");
     await client.initialize(); // Usar await
     console.log("🚀 Cliente de WhatsApp inicializado.");
