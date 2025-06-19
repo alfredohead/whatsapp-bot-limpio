@@ -7,7 +7,7 @@ const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 
-const SESSION_PATH = "./session";
+const SESSION_PATH = "./session"; // Sigue siendo usado por LocalAuth, pero Puppeteer usará --user-data-dir
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
@@ -36,9 +36,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--headless',
-          '--disable-gpu',
-          '--no-zygote'
+          '--user-data-dir=/tmp/my_chromium_profile' // Lista de argumentos modificada
         ],
       },
     });
