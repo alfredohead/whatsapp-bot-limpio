@@ -28,7 +28,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     const client = new Client({
       authStrategy: new LocalAuth({
         clientId: "whatsapp-bot",
-        dataPath: '/app/session'
+        dataPath: SESSION_PATH
       }),
       puppeteer: {
         headless: true,
