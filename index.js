@@ -13,6 +13,13 @@ const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
+// Constantes para el sondeo (polling)
+const POLLING_INTERVAL_MS = 2000; // Intervalo de sondeo: 2 segundos
+const MAX_POLLING_ATTEMPTS = 30; // Máximo de intentos: 30 (total ~60 segundos)
+
+// Función de utilidad para esperar
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 (async () => { // Inicio de IIFE async
   try {
     const executablePath = await puppeteer.executablePath();
@@ -70,12 +77,27 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
         // --- OpenAI Interaction Block START ---
         let assistantResponseForUser = "🤖 Lo siento, no tengo una respuesta clara en este momento."; // Default
         try { // Inner try specifically for OpenAI API calls
-          const run = await openai.beta.threads.createAndRun({
+          let run = await openai.beta.threads.createAndRun({ // Cambiado a let para poder reasignar 'run'
             assistant_id: ASSISTANT_ID,
             thread: { messages: [{ role: "user", content: body }] },
           });
 
-          if (run.status === 'completed') {
+          // Bucle de sondeo si el estado inicial es 'queued' o 'in_progress'
+          let pollingAttempts = 0;
+          while (['queued', 'in_progress'].includes(run.status) && pollingAttempts < MAX_POLLING_ATTEMPTS) {
+            pollingAttempts++;
+            console.log(`[OpenAI Polling] Intento ${pollingAttempts}/${MAX_POLLING_ATTEMPTS}: Run ID ${run.id}, Estado actual: ${run.status}. Esperando ${POLLING_INTERVAL_MS}ms...`);
+            await delay(POLLING_INTERVAL_MS);
+            run = await openai.beta.threads.runs.retrieve(run.thread_id, run.id);
+            console.log(`[OpenAI Polling] Intento ${pollingAttempts}/${MAX_POLLING_ATTEMPTS}: Run ID ${run.id}, Nuevo estado: ${run.status}.`);
+          }
+
+          if (['queued', 'in_progress'].includes(run.status)) {
+            console.warn(`[OpenAI Polling] Run ID ${run.id} alcanzó el máximo de sondeos (${MAX_POLLING_ATTEMPTS}) sin llegar a un estado terminal. Estado final: ${run.status}.`);
+            // Considerar este caso como un timeout o un error específico
+            assistantResponseForUser = `🤖 El procesamiento de tu solicitud está tardando más de lo esperado (estado: ${run.status}). Por favor, intenta nuevamente en unos momentos.`;
+            // Se salta la lógica de procesamiento de 'completed', 'failed', etc., y va directo al reply.
+          } else if (run.status === 'completed') {
             const messagesPage = await openai.beta.threads.messages.list(run.thread_id, { limit: 5, order: 'desc' });
             const assistantMessages = messagesPage.data.filter(m => m.role === 'assistant');
             if (assistantMessages.length > 0) {
