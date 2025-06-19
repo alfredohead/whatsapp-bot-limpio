@@ -1,9 +1,12 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
+
 // TODO: Uncomment cheerio and restore its usage when live weather data fetching in getWeather is reinstated.
 // const cheerio = require('cheerio'); // No longer used by getWeather
 // TODO: Uncomment node-fetch and restore its usage when live weather data fetching in getWeather is reinstated.
 // const fetch = require('node-fetch'); // No longer used by getWeather
+const cheerio = require('cheerio');
+
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {

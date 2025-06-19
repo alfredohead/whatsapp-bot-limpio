@@ -26,18 +26,23 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
 
     const client = new Client({
-      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
+      authStrategy: new LocalAuth({
+        clientId: "whatsapp-bot",
+        dataPath: SESSION_PATH
+      }),
       puppeteer: {
         headless: true,
-        executablePath: executablePath, // Usar la ruta obtenida
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--headless',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
           '--disable-gpu',
-          '--no-zygote'
+          '--disable-software-rasterizer'
         ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
       },
     });
 
@@ -198,6 +203,11 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
              msg.reply("⚠️ Hubo un error general procesando tu mensaje. Intenta nuevamente más tarde.");
         }
       }
+    });
+
+    // Add error logging
+    client.on('auth_failure', msg => {
+      console.error('❌ Error de autenticación:', msg);
     });
 
     console.log("🚀 Inicializando cliente de WhatsApp...");

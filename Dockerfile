@@ -1,48 +1,41 @@
 # Dockerfile para bot WhatsApp con Puppeteer en Fly.io
 
-FROM node:18
+FROM node:20-slim
 
 # Instala Chromium y dependencias necesarias
 RUN apt-get update && apt-get install -y \
-  wget \
-  ca-certificates \
-  fonts-liberation \
-  libappindicator3-1 \
-  libasound2 \
-  libatk-bridge2.0-0 \
-  libatk1.0-0 \
-  libcups2 \
-  libdbus-1-3 \
-  libgdk-pixbuf2.0-0 \
-  libgdk-pixbuf2.0-dev \
-  libnspr4 \
-  libnss3 \
-  libx11-xcb1 \
-  libxcomposite1 \
-  libxdamage1 \
-  libxrandr2 \
-  xdg-utils \
-  chromium \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+    chromium \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-symbola \
+    fonts-noto-color-emoji \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Establece variables de entorno
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Crea el directorio de la app
 WORKDIR /app
+
+# Crea el directorio de sesión con los permisos correctos
+RUN mkdir -p /app/session && \
+    chown -R node:node /app
 
 # Copia package.json y package-lock.json
 COPY package*.json ./
-
-# Instala dependencias como root
-RUN npm install
-
-# Crea un usuario no-root y cambia a él
-RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
-USER nodeuser
+RUN npm install --production
 
 # Copia el resto de los archivos del proyecto
 COPY . .
+
+# Establece permisos
+RUN chown -R node:node /app
+
+# Cambia a usuario no-root
+USER node
 
 # Expone el puerto para Fly.io
 EXPOSE 3000
