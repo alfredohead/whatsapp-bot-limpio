@@ -1,29 +1,39 @@
-name: Fly Deploy
+name: Deploy to Fly.io
+
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+
 env:
-  FLY_API_TOKEN: ${{fm2_lJPECAAAAAAACHzuxBCAoGIUASBpHqAXQ1ORbzADwrVodHRwczovL2FwaS5mbHkuaW8vdjGUAJLOAA+yrR8Lk7lodHRwczovL2FwaS5mbHkuaW8vYWFhL3YxxDwPEhcwpUMTaAJF8x/WuQdI7k622YOLKxsgUMT1xEDRBi7sxFLAgnbjZGJP6SA1xeLaH5/433i4vvmcH3TETgMr3hH5gByxJaKeSGv/M6rYYKLPtE43V0sZKHrApEtbyzo3DgELGWxiy/ZgfyrNfjzkcBnhpaXGsQN5Qb9GYJer2nqy13awEnp5l0WppsQgaomRvQiNUiI5cNGil9/NwXYOyZBH/TC4Fa+83G4tuNk=,fm2_lJPETgMr3hH5gByxJaKeSGv/M6rYYKLPtE43V0sZKHrApEtbyzo3DgELGWxiy/ZgfyrNfjzkcBnhpaXGsQN5Qb9GYJer2nqy13awEnp5l0WppsQQ9b2wDN2PWg/nWx1W/93lucO5aHR0cHM6Ly9hcGkuZmx5LmlvL2FhYS92MZYEks5oUhcbzmhSGZEXzgAPF7cKkc4ADxe3xCAKM9dUjzX+l1bPTvbQ5Zp9I8eDPgeAm6dLeB14Q2MXMQ==,fo1_Cp_kbUBHusagqL4QUGEBkBMeJp3sHPaFn5CdSyX7f6g}}
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  NODE_ENV: production
 
 jobs:
   deploy:
-    name: Deploy app
+    name: Deploy to Fly.io
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v3
-      
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-          
+
       - name: Install dependencies
-        run: npm ci
-        
+        run: |
+          npm ci
+          npm run build --if-present
+
       - name: Setup Flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
-        
+
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
