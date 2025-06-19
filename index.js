@@ -5,7 +5,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
-const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler"); // MODIFICADO: Importar getCurrentTime
+const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 
 const SESSION_PATH = "./session";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -21,6 +21,8 @@ const MAX_POLLING_ATTEMPTS = 30; // Máximo de intentos: 30 (total ~60 segundos)
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => { // Inicio de IIFE async
+  let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
+
   try {
     const executablePath = await puppeteer.executablePath();
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
@@ -29,7 +31,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
       puppeteer: {
         headless: true,
-        executablePath: executablePath, // Usar la ruta obtenida
+        executablePath: executablePath,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -42,45 +44,41 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     });
 
     client.on("qr", (qr) => {
-      console.log("🔹 Escanea este QR para iniciar sesión:");
+      console.log("🔵 Evento QR recibido. Contenido del QR:", qr);
       qrcode.generate(qr, { small: true });
+      console.log("🔹 Escanea este QR para iniciar sesión (o re-iniciar si la sesión se perdió).");
     });
 
     client.on("ready", () => {
+      clearTimeout(readyTimeout); // Limpiar el timeout al recibir 'ready'
       console.log("🚀 Evento 'ready' de client disparado. Bot listo y conectado.");
     });
 
     client.on("message", async (msg) => {
       const { from, body, type, isStatus, isGroupMsg } = msg;
 
-      // Ignorar mensajes de estados o grupos
       if (isStatus || from.endsWith("@g.us")) return;
 
-      // Log básico
       console.log(`[📩] Mensaje de ${from}:`, body);
 
       try {
         const texto = body.toLowerCase();
 
-        // Comando especial: Clima
         if (texto.includes("clima")) {
           const clima = await getWeather();
           return msg.reply(clima);
         }
 
-        // Comando especial: Efemérides
         if (texto.includes("efeméride") || texto.includes("efemeride") || texto.includes("pasó un día como hoy")) {
           const info = getEfemeride();
           return msg.reply(info);
         }
 
-        // --- OpenAI Interaction Block START ---
-        let assistantResponseForUser = "🤖 Lo siento, no tengo una respuesta clara en este momento."; // Default
-        try { // Inner try specifically for OpenAI API calls
+        let assistantResponseForUser = "🤖 Lo siento, no tengo una respuesta clara en este momento.";
+        try {
           let run = await openai.beta.threads.createAndRun({
             assistant_id: ASSISTANT_ID,
             thread: { messages: [{ role: "user", content: body }] },
-            // stream: false // ensure we are not streaming if we want to poll like this. Default is false.
           });
 
           let pollingAttempts = 0;
@@ -102,28 +100,25 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                 console.warn("[OpenAI] Run completado pero sin mensajes del asistente en el hilo:", run.id);
                 assistantResponseForUser = "🤖 El asistente procesó tu solicitud pero no generó un mensaje visible. Intenta reformular.";
               }
-              break; // Salir del bucle de sondeo
+              break;
             } else if (run.status === 'failed') {
               console.error("❌ OpenAI Run falló. ID:", run.id, "Error:", run.last_error);
               assistantResponseForUser = `⚠️ Hubo un error con el asistente (Fallo: ${run.last_error?.code || 'UnknownError'}). Intenta nuevamente.`;
-              break; // Salir del bucle de sondeo
+              break;
             } else if (run.status === 'requires_action') {
               if (run.required_action && run.required_action.type === 'submit_tool_outputs') {
                 const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
                 let toolOutputs = [];
-
                 console.log(`[OpenAI Tool Call] Run ID ${run.id} requiere acción: submit_tool_outputs. ${toolCalls.length} herramienta(s) por llamar.`);
-
                 for (const toolCall of toolCalls) {
                   let output = "";
                   console.log(`[OpenAI Tool Call] Ejecutando función: ${toolCall.function.name}, ID de llamada: ${toolCall.id}`);
-                  // No se parsean argumentos como `JSON.parse(toolCall.function.arguments)` porque las funciones no los usan
                   try {
                     if (toolCall.function.name === 'get_clima_actual') {
                       output = await getWeather();
                     } else if (toolCall.function.name === 'fetchEfemeride') {
                       output = getEfemeride();
-                    } else if (toolCall.function.name === 'get_current_time') { // MODIFICADO: Manejar get_current_time
+                    } else if (toolCall.function.name === 'get_current_time') {
                       output = getCurrentTime();
                     } else if (toolCall.function.name === 'access_web') {
                       output = "Actualmente no puedo acceder a información web externa para esta solicitud.";
@@ -137,73 +132,64 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                   }
                   toolOutputs.push({ tool_call_id: toolCall.id, output: output });
                 }
-
                 if (toolOutputs.length > 0) {
                   console.log(`[OpenAI Tool Call] Enviando salidas de herramientas para Run ID ${run.id}:`, toolOutputs);
                   run = await openai.beta.threads.runs.submitToolOutputs(run.thread_id, run.id, { tool_outputs: toolOutputs });
-                  // El bucle continuará para sondear el nuevo estado de 'run'
                 } else {
                   console.warn(`[OpenAI Tool Call] No se generaron salidas de herramientas para Run ID ${run.id}. Esto puede ser un error.`);
-                  // Podríamos romper el bucle o manejarlo como un error específico.
-                  // Por ahora, permitimos que el bucle continúe, aunque podría resultar en un timeout.
                 }
               } else {
                 console.warn(`[OpenAI Run] Estado 'requires_action' con tipo desconocido: ${run.required_action?.type}. Run ID: ${run.id}`);
                 assistantResponseForUser = "🤖 El asistente requiere una acción que no reconozco. Por favor, intenta de nuevo.";
-                break; // Salir del bucle
+                break;
               }
             } else if (['queued', 'in_progress'].includes(run.status)) {
-              // Esperar y volver a sondear
               await delay(POLLING_INTERVAL_MS);
               run = await openai.beta.threads.runs.retrieve(run.thread_id, run.id);
-            } else { // Otros estados terminales como 'cancelled', 'expired'
+            } else {
               console.warn(`[OpenAI Run] Estado terminal no manejado explícitamente: ${run.status}. Run ID: ${run.id}`);
               assistantResponseForUser = `🤖 El procesamiento de tu solicitud terminó con estado: ${run.status}.`;
-              break; // Salir del bucle
+              break;
             }
             pollingAttempts++;
-          } // Fin del while
+          }
 
           if (pollingAttempts >= MAX_POLLING_ATTEMPTS && !['completed', 'failed', 'cancelled', 'expired'].includes(run.status)) {
             console.warn(`[OpenAI Polling] Run ID ${run.id} alcanzó el máximo de sondeos (${MAX_POLLING_ATTEMPTS}) sin llegar a un estado terminal completo. Estado final: ${run.status}.`);
             assistantResponseForUser = `🤖 El procesamiento de tu solicitud está tardando más de lo esperado (estado final: ${run.status}). Por favor, intenta nuevamente en unos momentos.`;
           }
-
         } catch (openaiError) {
-          console.error("❌ Error durante la interacción con API de OpenAI:", openaiError.stack); // Log full stack
+          console.error("❌ Error durante la interacción con API de OpenAI:", openaiError.stack);
           let userFacingErrorMessage = "⚠️ Hubo un error al comunicarme con el asistente de IA. Intenta nuevamente más tarde.";
-
-          if (openaiError.status) { // It's an OpenAI error object
+          if (openaiError.status) {
             console.error(`  OpenAI Error Details: Status=${openaiError.status}, Code=${openaiError.code}, Type=${openaiError.type}, Message=${openaiError.message}`);
-            if (openaiError.status === 429) { // Rate limit
+            if (openaiError.status === 429) {
                 userFacingErrorMessage = "⚠️ Demasiadas solicitudes al asistente. Por favor, espera un momento y vuelve a intentarlo.";
-            } else if (openaiError.status === 401) { // Authentication
+            } else if (openaiError.status === 401) {
                 userFacingErrorMessage = "⚠️ Problema de autenticación con el asistente. Notifica al administrador.";
-            } else if (openaiError.status === 400) { // Bad request
+            } else if (openaiError.status === 400) {
                 userFacingErrorMessage = `⚠️ Tu solicitud no pudo ser procesada por el asistente (Error: ${openaiError.code || openaiError.status}). Verifica tu mensaje o intenta de forma diferente.`;
-            } else if (openaiError.status >= 500) { // Server-side errors
+            } else if (openaiError.status >= 500) {
                 userFacingErrorMessage = "⚠️ El servicio del asistente de IA está experimentando problemas. Intenta más tarde.";
             }
           }
-          assistantResponseForUser = userFacingErrorMessage; // Set the OpenAI response to the error message
+          assistantResponseForUser = userFacingErrorMessage;
         }
-        // --- OpenAI Interaction Block END ---
-
         return msg.reply(`${assistantResponseForUser}\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`);
-      } catch (error) { // Outer catch for any other errors
+      } catch (error) {
         console.error("❌ Error en el manejador de mensajes (fuera de OpenAI):", error.stack);
-        // Basic check to avoid double reply if OpenAI block already sent one.
-        // A more robust solution would involve explicit state management if msg.reply itself could fail.
-        if (!msg.hasReplied) { // This is a hypothetical property, actual state management might be needed for robustness here.
+        if (!msg.hasReplied) {
              msg.reply("⚠️ Hubo un error general procesando tu mensaje. Intenta nuevamente más tarde.");
         }
       }
     });
 
-    // Nuevos manejadores de eventos
     console.log("🚀 Configurando manejador de evento 'authenticated'...");
     client.on('authenticated', () => {
       console.log('✅ Cliente AUTENTICADO');
+      readyTimeout = setTimeout(() => {
+        console.error('❌ TIMEOUT: El evento "ready" no se disparó después de 2 minutos de la autenticación.');
+      }, 120000); // 120000 ms = 2 minutos
     });
 
     console.log("🚀 Configurando manejador de evento 'disconnected'...");
@@ -212,16 +198,17 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     });
 
     console.log("🚀 Configurando manejador de evento 'auth_failure'...");
-    client.on('auth_failure', msg_text => { // Cambiado el nombre del parámetro para evitar confusión con la variable 'msg' externa
+    client.on('auth_failure', msg_text => {
       console.error('❌ FALLO DE AUTENTICACIÓN:', msg_text);
     });
 
     console.log("🚀 Inicializando cliente de WhatsApp...");
-    await client.initialize(); // Usar await
+    await client.initialize();
     console.log("🚀 Cliente de WhatsApp inicializado.");
+    console.log("🚀🚀🚀 Final de la configuración del cliente y handlers. Esperando eventos...");
 
   } catch (error) {
     console.error("❌ Error durante la inicialización del bot:", error.stack);
-    process.exit(1); // Salir si hay un error crítico en la inicialización
+    process.exit(1);
   }
-})(); // Fin de IIFE
+})();
