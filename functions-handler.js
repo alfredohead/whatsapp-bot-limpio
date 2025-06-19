@@ -41,6 +41,7 @@ Municipalidad de General San Martín.`;
 }
 
 async function getWeather() { // The async keyword can be removed if no await is used, but it's harmless.
+  // TODO: Restore live weather fetching. Original data source (tiempo.com) was unavailable. Consider tracking with an issue ID if applicable.
   console.log('[getWeather] Devolviendo respuesta temporal. Fuente de datos original no disponible.');
   return `🌦️ Lo siento, el servicio de información meteorológica no está disponible en este momento. Por favor, intenta más tarde.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 }
