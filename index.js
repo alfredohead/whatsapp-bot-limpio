@@ -192,7 +192,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         }
         // --- OpenAI Interaction Block END ---
 
-        return msg.reply(`${assistantResponseForUser}\n\n🤖 Asistente Virtual\nMunicipalidad de General San Martín.`);
+        return msg.reply(`${assistantResponseForUser}\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`);
       } catch (error) { // Outer catch for any other errors
         console.error("❌ Error en el manejador de mensajes (fuera de OpenAI):", error.stack);
         // Basic check to avoid double reply if OpenAI block already sent one.
