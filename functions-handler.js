@@ -1,4 +1,3 @@
-
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
 const cheerio = require('cheerio');
@@ -18,12 +17,12 @@ function getEfemeride() {
   if (evento) {
     return `📅 ${evento}
 
-🤖 Asistente Virtual
+🤖 Asistente IA
 Municipalidad de General San Martín.`;
   } else {
     return `📅 Hoy no hay efemérides destacadas registradas.
 
-🤖 Asistente Virtual
+🤖 Asistente IA
 Municipalidad de General San Martín.`;
   }
 }
@@ -40,19 +39,19 @@ async function getWeather() {
     if (temperatura && estado) {
       return `🌤️ El clima actual en San Martín, Mendoza es: ${estado}, ${temperatura}
 
-🤖 Asistente Virtual
+🤖 Asistente IA
 Municipalidad de General San Martín.`;
     } else {
       return `🌥️ No se pudo obtener el clima actual en este momento.
 
-🤖 Asistente Virtual
+🤖 Asistente IA
 Municipalidad de General San Martín.`;
     }
   } catch (e) {
-    console.error('Error al obtener clima:', e.message);
+    console.error('Error al obtener clima:', e.stack); // Mantengo e.stack de una modificación anterior
     return `⚠️ No se pudo obtener el clima actual.
 
-🤖 Asistente Virtual
+🤖 Asistente IA
 Municipalidad de General San Martín.`;
   }
 }
