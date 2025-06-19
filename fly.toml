@@ -1,4 +1,8 @@
-# fly.toml app configuration file
+# fly.toml app configuration file generated for asistente-whatsapp on 2025-06-01T23:54:15-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
 app = "asistente-whatsapp"
 
 [build]
