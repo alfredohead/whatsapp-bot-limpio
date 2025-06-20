@@ -71,6 +71,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--disable-features=ProcessSingleton',
           '--no-first-run',
           '--no-default-browser-check',
+          '--disable-breakpad', // <--- Nuevo flag añadido
         ],
         // userDataDir: puppeteerUserDataPath, // Eliminado: LocalAuth gestionará esto
       },
