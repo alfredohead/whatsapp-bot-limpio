@@ -7,6 +7,8 @@ const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
+const fs = require('fs');
+const path = require('path');
 
 const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más específica para LocalAuth
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -29,6 +31,30 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   try {
     const executablePath = await puppeteer.executablePath();
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
+
+    // Intentar eliminar el archivo SingletonLock para prevenir errores de perfil en uso
+    const puppeteerSessionPath = path.join(SESSION_PATH, 'session'); // Este es el user-data-dir que Puppeteer usa según los logs
+    const singletonLockPath = path.join(puppeteerSessionPath, 'SingletonLock');
+
+    try {
+      if (fs.existsSync(singletonLockPath)) {
+        fs.unlinkSync(singletonLockPath);
+        console.log(`[INFO] Se eliminó el archivo SingletonLock existente en: ${singletonLockPath}`);
+      }
+    } catch (err) {
+      console.warn(`[WARN] No se pudo eliminar el archivo SingletonLock en ${singletonLockPath}:`, err.message);
+    }
+
+    // Adicionalmente, asegúrate de que el directorio base de la sesión de puppeteer exista,
+    // ya que LocalAuth podría esperarlo.
+    try {
+      if (!fs.existsSync(puppeteerSessionPath)) {
+        fs.mkdirSync(puppeteerSessionPath, { recursive: true });
+        console.log(`[INFO] Se creó el directorio para la sesión de Puppeteer en: ${puppeteerSessionPath}`);
+      }
+    } catch (err) {
+      console.warn(`[WARN] No se pudo crear el directorio para la sesión de Puppeteer en ${puppeteerSessionPath}:`, err.message);
+    }
 
     const client = new Client({
       authStrategy: new LocalAuth({ dataPath: SESSION_PATH }), // LocalAuth gestiona la sesión de wwebjs
