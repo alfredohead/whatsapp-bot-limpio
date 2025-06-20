@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y \
 
 # Define el path del ejecutable de Puppeteer
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 # Crea el directorio de trabajo
 WORKDIR /app
@@ -42,17 +43,23 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instala dependencias
-RUN npm install
+RUN npm install --production
 
 # Agrega usuario no root
 RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
+
+# Crea directorios necesarios y asigna permisos
+RUN mkdir -p /app/session && chown -R nodeuser:nodejs /app
+
+# Cambia al usuario no root
 USER nodeuser
 
 # Copia el resto del proyecto
-COPY . .
+COPY --chown=nodeuser:nodejs . .
 
-# Expone el puerto que usa tu app
+# Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
 EXPOSE 3000
 
 # Comando principal
 CMD ["node", "index.js"]
+

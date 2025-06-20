@@ -6,12 +6,32 @@ primary_region = "eze"
 
 [env]
   NODE_ENV = "production"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
+  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
 
 [[mounts]]
   source = "wwebjs_session"
   destination = "/app/session"
 
-[[vm]]
+[vm]
   memory = "2gb"
   cpu_kind = "shared"
   cpus = 2
+
+[processes]
+  app = "node index.js"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "15s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+
