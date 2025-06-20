@@ -7,7 +7,7 @@ const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 
-const SESSION_PATH = "./session"; // Sigue siendo usado por LocalAuth, pero Puppeteer usará --user-data-dir
+const SESSION_PATH = "./session";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
@@ -20,6 +20,9 @@ const MAX_POLLING_ATTEMPTS = 30; // Máximo de intentos: 30 (total ~60 segundos)
 // Función de utilidad para esperar
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Definir la ruta para userDataDir de Puppeteer
+const puppeteerUserDataPath = "/app/session/puppeteer_profile";
+
 (async () => { // Inicio de IIFE async
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
 
@@ -28,7 +31,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
 
     const client = new Client({
-      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }),
+      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }), // LocalAuth gestiona la sesión de wwebjs
       puppeteer: {
         headless: true,
         executablePath: executablePath,
@@ -36,8 +39,15 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--user-data-dir=/tmp/my_chromium_profile' // Lista de argumentos modificada
+          '--disable-gpu', // Recomendado para entornos headless/servidor
+          '--no-zygote', // Ayuda en algunos entornos con recursos limitados
+          '--single-process', // Puede ayudar en entornos con recursos muy limitados
+          '--disable-features=ProcessSingleton', // Evita problemas de singleton del proceso
+          '--no-first-run', // Evita la pantalla de bienvenida de Chrome
+          '--no-default-browser-check', // No verificar si es el navegador por defecto
+          // Ya no se incluye '--user-data-dir' aquí
         ],
+        userDataDir: puppeteerUserDataPath, // userDataDir se especifica aquí
       },
     });
 
