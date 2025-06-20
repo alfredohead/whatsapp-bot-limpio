@@ -7,7 +7,7 @@ const { OpenAI } = require("openai");
 const puppeteer = require('puppeteer'); // Importar puppeteer
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 
-const SESSION_PATH = "./session";
+const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más específica para LocalAuth
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
@@ -20,8 +20,7 @@ const MAX_POLLING_ATTEMPTS = 30; // Máximo de intentos: 30 (total ~60 segundos)
 // Función de utilidad para esperar
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Definir la ruta para userDataDir de Puppeteer
-const puppeteerUserDataPath = "/app/session/puppeteer_profile";
+// Ya no se define puppeteerUserDataPath aquí
 
 (async () => { // Inicio de IIFE async
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
@@ -39,15 +38,14 @@ const puppeteerUserDataPath = "/app/session/puppeteer_profile";
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-gpu', // Recomendado para entornos headless/servidor
-          '--no-zygote', // Ayuda en algunos entornos con recursos limitados
-          '--single-process', // Puede ayudar en entornos con recursos muy limitados
-          '--disable-features=ProcessSingleton', // Evita problemas de singleton del proceso
-          '--no-first-run', // Evita la pantalla de bienvenida de Chrome
-          '--no-default-browser-check', // No verificar si es el navegador por defecto
-          // Ya no se incluye '--user-data-dir' aquí
+          '--disable-gpu',
+          '--no-zygote',
+          '--single-process',
+          '--disable-features=ProcessSingleton',
+          '--no-first-run',
+          '--no-default-browser-check',
         ],
-        userDataDir: puppeteerUserDataPath, // userDataDir se especifica aquí
+        // userDataDir: puppeteerUserDataPath, // Eliminado: LocalAuth gestionará esto
       },
     });
 
