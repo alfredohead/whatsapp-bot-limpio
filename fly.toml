@@ -21,17 +21,34 @@ primary_region = "eze"
 [processes]
   app = "node index.js"
 
-[http_service]
+[[services]]
   internal_port = 3000
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+  protocol = "tcp"
+  processes = ["app"]
 
-[[http_service.checks]]
-  grace_period = "30s"
-  interval = "15s"
-  method = "GET"
-  timeout = "5s"
-  path = "/health"
+  [services.http_checks]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "shared"
+    hard_limit = 25
+    soft_limit = 20
+
+  [services.machines_release]
+    auto_stop_machines = false
+    auto_start_machines = true
+    min_machines_running = 1
 
