@@ -1,5 +1,6 @@
 // index.js – Versión final del bot de WhatsApp con funciones completas
 
+const express = require('express');
 require("dotenv").config();
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
@@ -211,6 +212,18 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     console.log("🚀 Configurando manejador de evento 'auth_failure'...");
     client.on('auth_failure', msg_text => {
       console.error('❌ FALLO DE AUTENTICACIÓN:', msg_text);
+    });
+
+    // Configuración del servidor Express para Health Check
+    const app = express();
+    const PORT = process.env.PORT || 3000; // Fly.io puede setear PORT
+
+    app.get('/health', (req, res) => {
+      res.status(200).send('OK');
+    });
+
+    app.listen(PORT, () => {
+      console.log(`Servidor de Health Check escuchando en el puerto ${PORT}`);
     });
 
     console.log("🚀 Inicializando cliente de WhatsApp...");
