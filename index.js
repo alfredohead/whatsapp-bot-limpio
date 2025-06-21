@@ -69,6 +69,8 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--no-default-browser-check',
           '--disable-breakpad',
           '--disable-crash-reporter',
+        ignoreHTTPSErrors: true,
+          '--ignore-certificate-errors',
         ],
       },
     });
