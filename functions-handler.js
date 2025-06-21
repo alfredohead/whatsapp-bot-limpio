@@ -48,27 +48,30 @@ Municipalidad de General San Martín.`;
 }
 
 async function getWeather() {
-  const apiKey = process.env.ACCUWEATHER_API_KEY;
-  const locationKey = '7880_AR'; // San Martín, Mendoza
+  const apiKey = process.env.OPENWEATHER_API_KEY;
+  const lat = -33.0804; // San Martín, Mendoza
+  const lon = -68.4795;
 
   try {
-    const response = await axios.get(`http://dataservice.accuweather.com/currentconditions/v1/${locationKey}`, {
+    const response = await axios.get("https://api.openweathermap.org/data/2.5/weather", {
       params: {
-        apikey: apiKey,
-        language: 'es-ar',
-        details: true
+        lat,
+        lon,
+        appid: apiKey,
+        units: 'metric',
+        lang: 'es'
       }
     });
 
-    const data = response.data[0];
-    const temp = data.Temperature.Metric.Value;
-    const desc = data.WeatherText;
+    const data = response.data;
+    const temp = data.main.temp;
+    const desc = data.weather[0].description;
 
-    return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${desc.toLowerCase()}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+    return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${desc}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 
   } catch (error) {
-    console.error("❌ Error al obtener el clima desde AccuWeather:", error.response?.data || error.message);
-    return `⚠️ No pude obtener el clima actual. Verificá la conexión o la clave API.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+    console.error("❌ Error al obtener el clima desde OpenWeather:", error.response?.data || error.message);
+    return `⚠️ No pude obtener el clima actual. Verificá la conexión o la clave API de OpenWeather.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
   }
 }
 
