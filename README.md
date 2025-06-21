@@ -12,6 +12,7 @@ Este proyecto tiene:
 
 ### Uso con Docker/Fly.io
 
+
 Para desplegar el bot en un contenedor (por ejemplo Fly.io) se utiliza el archivo `start.sh`. Este script prepara la carpeta de sesión (crea el directorio, corrige los permisos y elimina archivos de bloqueo que puedan quedar de sesiones previas) antes de iniciar `node index.js`. El contenedor ejecuta automáticamente `/start.sh`, por lo que no es necesario invocarlo manualmente en Windows.
 
 1. `docker build -t asistente-whatsapp .`
