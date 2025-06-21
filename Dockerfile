@@ -54,9 +54,11 @@ RUN mkdir -p /app/session && chown -R node:node /app/session
 # Copia el resto del proyecto con permisos para nodeuser
 COPY --chown=nodeuser:nodejs . .
 
+
 # Copia script de inicio
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
+
 
 # Ejecuta como root para poder ajustar permisos de volumen en tiempo de ejecución
 USER root
@@ -65,5 +67,7 @@ USER root
 EXPOSE 3000
 
 # Comando principal
-CMD ["/start.sh"]
+
+CMD ["/app/start.sh"]
+
 

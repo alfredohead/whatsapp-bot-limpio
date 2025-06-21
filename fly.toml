@@ -21,6 +21,7 @@ primary_region = "eze"
 [processes]
   app = "/start.sh"
 
+
 [[services]]
   internal_port = 3000
   protocol = "tcp"
