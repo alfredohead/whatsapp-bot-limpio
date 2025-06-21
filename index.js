@@ -1,4 +1,5 @@
-// index.js – Versión final del bot de WhatsApp con funciones completas
+
+// index.js – Versión estable para WhatsApp bot con puppeteer completo
 
 const express = require('express');
 require("dotenv").config();
@@ -9,15 +10,11 @@ const { getWeather, getEfemeride, getCurrentTime } = require('./functions-handle
 const { runAssistant } = require('./openaiAssistant');
 const fs = require('fs');
 const path = require('path');
-
 const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más específica para LocalAuth
 // Las claves OPENAI se manejan dentro de openaiAssistant.js
+const SESSION_DATA_PATH = "./session/wwebjs_auth_data";
 
-// Ya no se define puppeteerUserDataPath aquí
-
-(async () => { // Inicio de IIFE async
-  let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
-
+(async () => {
   try {
     // Asegurar que SESSION_PATH exista con los permisos correctos
     console.log(`[INFO] Verificando el directorio de sesión: ${SESSION_PATH}`);
@@ -60,7 +57,7 @@ const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más espe
     }
 
     const client = new Client({
-      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }), // LocalAuth gestiona la sesión de wwebjs
+      authStrategy: new LocalAuth({ dataPath: SESSION_DATA_PATH }),
       puppeteer: {
         headless: true,
         executablePath: executablePath,
@@ -80,21 +77,17 @@ const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más espe
           '--ignore-certificate-errors',
         ],
       },
+
     });
 
     client.on("qr", (qr) => {
-      console.log("🔵 Evento QR recibido. Contenido del QR:", qr);
+      console.log("🔷 Escaneá este QR para conectar:");
       qrcode.generate(qr, { small: true });
-      console.log("🔹 Escanea este QR para iniciar sesión (o re-iniciar si la sesión se perdió).");
     });
 
     client.on("ready", () => {
-      if (readyTimeout) { // Robustez: limpiar solo si existe
-        clearTimeout(readyTimeout);
-      }
-      console.log("🚀 Evento 'ready' de client disparado. Bot listo y conectado.");
+      console.log("✅ Bot listo y funcionando.");
     });
-
     client.on("message", async (msg) => {
       const { from, body, type, isStatus, isGroupMsg } = msg;
 
@@ -136,32 +129,13 @@ const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más espe
       if (readyTimeout) { // Limpiar timeout anterior si existe
         clearTimeout(readyTimeout);
       }
-      readyTimeout = setTimeout(() => {
-        console.error('❌ TIMEOUT: El evento "ready" no se disparó después de 2 minutos de la autenticación.');
-      }, 120000); // 120000 ms = 2 minutos
     });
 
-    console.log("🚀 Configurando manejador de evento 'disconnected'...");
-    client.on('disconnected', (reason) => {
-      console.log('❌ Cliente DESCONECTADO:', reason);
-    });
-
-    console.log("🚀 Configurando manejador de evento 'auth_failure'...");
-    client.on('auth_failure', msg_text => {
-      console.error('❌ FALLO DE AUTENTICACIÓN:', msg_text);
-    });
-
-    // Configuración del servidor Express para Health Check
     const app = express();
-    const PORT = process.env.PORT || 3000; // Fly.io puede setear PORT
+    const PORT = process.env.PORT || 3000;
 
-    app.get('/health', (req, res) => {
-      res.status(200).send('OK');
-    });
-
-    app.listen(PORT, () => {
-      console.log(`Servidor de Health Check escuchando en el puerto ${PORT}`);
-    });
+    app.get("/health", (_, res) => res.send("OK"));
+    app.listen(PORT, () => console.log(`🌐 Health check escuchando en puerto ${PORT}`));
 
     console.log("🚀 Inicializando cliente de WhatsApp...");
     try {
