@@ -55,7 +55,7 @@ RUN mkdir -p /app/session && chown -R node:node /app/session
 COPY --chown=nodeuser:nodejs . .
 
 # Asegura que el script de inicio sea ejecutable y cópialo a la raíz
-RUN chmod +x start.sh && cp start.sh /start.sh
+RUN chmod +x start.sh
 
 # Ejecuta como root para poder ajustar permisos de volumen en tiempo de ejecución
 USER root
@@ -64,8 +64,6 @@ USER root
 EXPOSE 3000
 
 # Comando principal
-CMD ["/start.sh"]
-
-
+CMD ["./start.sh"]
 
 
