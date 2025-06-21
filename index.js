@@ -56,7 +56,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       puppeteer: {
         headless: true,
         executablePath: executablePath,
-        // No especificar userDataDir aquí, dejar que LocalAuth lo maneje
+        ignoreHTTPSErrors: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -69,6 +69,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--no-default-browser-check',
           '--disable-breakpad',
           '--disable-crash-reporter',
+          '--ignore-certificate-errors',
         ],
       },
     });

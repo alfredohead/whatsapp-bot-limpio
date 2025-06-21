@@ -19,7 +19,7 @@ primary_region = "eze"
   cpus = 2
 
 [processes]
-  app = "/start.sh"
+  app = "/app/start.sh"
 
 [[services]]
   internal_port = 3000
