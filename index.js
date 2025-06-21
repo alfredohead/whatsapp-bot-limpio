@@ -29,37 +29,15 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
 
   try {
-    // Limpiar el directorio SESSION_PATH al inicio para asegurar un estado limpio
-    console.log(`[INFO] Verificando y limpiando el directorio de sesión: ${SESSION_PATH}`);
+    // Asegurar que SESSION_PATH exista con los permisos correctos
+    console.log(`[INFO] Verificando el directorio de sesión: ${SESSION_PATH}`);
     try {
-      if (fs.existsSync(SESSION_PATH)) {
-        console.log(`[INFO] El directorio ${SESSION_PATH} existe. Eliminando su contenido...`);
-        // Eliminar todos los archivos y subdirectorios dentro de SESSION_PATH
-        fs.readdirSync(SESSION_PATH).forEach(file => {
-          const filePath = path.join(SESSION_PATH, file);
-          if (fs.lstatSync(filePath).isDirectory()) {
-            fs.rmSync(filePath, { recursive: true, force: true });
-            console.log(`[INFO] Subdirectorio eliminado: ${filePath}`);
-          } else {
-            fs.unlinkSync(filePath);
-            console.log(`[INFO] Archivo eliminado: ${filePath}`);
-          }
-        });
-        console.log(`[INFO] Contenido de ${SESSION_PATH} eliminado.`);
-      } else {
-        console.log(`[INFO] El directorio ${SESSION_PATH} no existe. Creándolo...`);
+      if (!fs.existsSync(SESSION_PATH)) {
         fs.mkdirSync(SESSION_PATH, { recursive: true });
         console.log(`[INFO] Directorio ${SESSION_PATH} creado.`);
       }
-      // Asegurarse de que SESSION_PATH exista después de la limpieza (si se eliminó y recreó o solo se creó)
-      if (!fs.existsSync(SESSION_PATH)) {
-        fs.mkdirSync(SESSION_PATH, { recursive: true });
-        console.log(`[INFO] Se re-creó el directorio ${SESSION_PATH} como medida de seguridad.`);
-      }
     } catch (err) {
-      console.error(`[ERROR] Error al limpiar o crear el directorio ${SESSION_PATH}:`, err);
-      // Decide si quieres salir o continuar si hay un error aquí.
-      // Por ahora, solo se registrará el error.
+      console.error(`[ERROR] No se pudo preparar el directorio ${SESSION_PATH}:`, err);
     }
 
     const executablePath = await puppeteer.executablePath();
@@ -67,16 +45,18 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Intentar eliminar el archivo SingletonLock para prevenir errores de perfil en uso
     const puppeteerSessionPath = path.join(SESSION_PATH, 'session'); // Este es el user-data-dir que Puppeteer usa según los logs
-    const singletonLockPath = path.join(puppeteerSessionPath, 'SingletonLock');
-
-    try {
-      if (fs.existsSync(singletonLockPath)) {
-        fs.unlinkSync(singletonLockPath);
-        console.log(`[INFO] Se eliminó el archivo SingletonLock existente en: ${singletonLockPath}`);
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    lockFiles.forEach(file => {
+      const filePath = path.join(puppeteerSessionPath, file);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[INFO] Se eliminó el archivo ${file} existente en: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(`[WARN] No se pudo eliminar ${filePath}:`, err.message);
       }
-    } catch (err) {
-      console.warn(`[WARN] No se pudo eliminar el archivo SingletonLock en ${singletonLockPath}:`, err.message);
-    }
+    });
 
     // Adicionalmente, asegúrate de que el directorio base de la sesión de puppeteer exista,
     // ya que LocalAuth podría esperarlo.
@@ -94,6 +74,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       puppeteer: {
         headless: true,
         executablePath: executablePath,
+        ignoreHTTPSErrors: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -104,7 +85,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--disable-features=ProcessSingleton',
           '--no-first-run',
           '--no-default-browser-check',
-          '--disable-breakpad', // <--- Nuevo flag añadido
+          '--disable-breakpad',
+          '--disable-crash-reporter',
+          '--ignore-certificate-errors',
         ],
       },
     });
