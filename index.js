@@ -6,6 +6,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const http = require("http");
+const express = require('express');
 
 // ----------------------------------------------------
 // 1. Configuración y Validación
