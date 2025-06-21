@@ -48,21 +48,19 @@ RUN npm install --production
 # Agrega usuario no root
 RUN addgroup --system nodejs && adduser --system --ingroup nodejs nodeuser
 
-# Crea directorios necesarios y asigna permisos
-RUN mkdir -p /app/session && chown -R node:node /app/session
+# Crea directorios necesarios y asigna permisos al usuario nodeuser
+RUN mkdir -p /app/session && chown -R nodeuser:nodejs /app/session
 
 # Copia el resto del proyecto con permisos para nodeuser
 COPY --chown=nodeuser:nodejs . .
 
-# Asegura que el script de inicio sea ejecutable y cópialo a la raíz
-RUN chmod +x start.sh
-
-# Ejecuta como root para poder ajustar permisos de volumen en tiempo de ejecución
-USER root
-
 # Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
 EXPOSE 3000
 
+# Cambia al usuario no root para ejecutar la aplicación
+USER nodeuser
+
 # Comando principal
 CMD ["node", "index.js"]
+
 
