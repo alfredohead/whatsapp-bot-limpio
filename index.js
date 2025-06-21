@@ -94,6 +94,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       puppeteer: {
         headless: true,
         executablePath: executablePath,
+        ignoreHTTPSErrors: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -104,7 +105,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--disable-features=ProcessSingleton',
           '--no-first-run',
           '--no-default-browser-check',
-          '--disable-breakpad', // <--- Nuevo flag añadido
+          '--disable-breakpad',
+          '--disable-crash-reporter',
+          '--ignore-certificate-errors',
         ],
       },
     });

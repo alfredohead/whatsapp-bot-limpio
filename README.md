@@ -8,6 +8,13 @@ Este proyecto tiene:
 
 1. Ejecutá `npm install`
 2. Configurá tu variable de entorno `OPENAI_API_KEY` (puedes usar Fly.io secrets o un archivo `.env`)
-3. Corré `node index.js` para iniciar el bot
+3. Corré `node index.js` para probarlo localmente
+
+### Uso con Docker/Fly.io
+
+Para desplegar el bot en un contenedor (por ejemplo Fly.io) se utiliza el archivo `start.sh`. Este script prepara la carpeta de sesión (crea el directorio, corrige los permisos y elimina archivos de bloqueo que puedan quedar de sesiones previas) antes de iniciar `node index.js`. El contenedor ejecuta automáticamente `/app/start.sh`, por lo que no es necesario invocarlo manualmente en Windows.
+
+1. `docker build -t asistente-whatsapp .`
+2. `docker run -e OPENAI_API_KEY=tu_clave -p 3000:3000 asistente-whatsapp`
 
 El bot mantiene la sesión de WhatsApp usando volúmenes persistentes y responde usando GPT.
