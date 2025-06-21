@@ -7,9 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Logs de Puppeteer para debugging
 ENV DEBUG="puppeteer:*"
 
-# Asegura que el script de inicio sea ejecutable
-RUN chmod +x /app/start.sh
-
 # Instala Chromium y dependencias necesarias
 RUN apt-get update && apt-get install -y \
     wget \
@@ -65,6 +62,6 @@ EXPOSE 3000
 USER root
 
 # Comando principal que prepara la sesión y lanza la app como nodeuser
-CMD ["/app/start.sh"]
+CMD ["node", "index.js"]
 
 
