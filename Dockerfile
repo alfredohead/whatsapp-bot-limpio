@@ -64,5 +64,5 @@ USER root
 EXPOSE 3000
 
 # Comando principal
-CMD ["./start.sh"]
+CMD ["node", "index.js"]
 

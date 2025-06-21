@@ -1,51 +1,19 @@
-app = "asistente-whatsapp"
-primary_region = "eze"
+# fly.toml app configuration file generated for whatsapp-bot-limpio on 2025-06-21T01:46:02-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'whatsapp-bot-limpio'
+primary_region = 'eze'
 
 [build]
   dockerfile = "Dockerfile"
 
-[env]
-  NODE_ENV = "production"
-  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD = "true"
-  PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
+[http_service]
+  internal_port = 3000
+  force_https = true
 
-[[mounts]]
-  source = "wwebjs_session"
-  destination = "/app/session"
-
-[vm]
+[[vm]]
   memory = "2gb"
   cpu_kind = "shared"
   cpus = 2
-
-[processes]
-  app = "/app/start.sh"
-
-[[services]]
-  internal_port = 3000
-  protocol = "tcp"
-  processes = ["app"]
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
-
-  [services.http_checks]
-    grace_period = "90s" # Modificado de "30s"
-    interval = "15s"
-    method = "GET"
-    timeout = "5s"
-    path = "/health"
-
-  [[services.ports]]
-    port = 80
-    handlers = ["http"]
-    force_https = true
-
-  [[services.ports]]
-    port = 443
-    handlers = ["tls", "http"]
-
-  [services.concurrency]
-    type = "requests"
-    hard_limit = 25
-    soft_limit = 20
