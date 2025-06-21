@@ -6,6 +6,6 @@ mkdir -p "$SESSION_DIR"
 # Fix permissions in case the volume was mounted with root ownership
 chown -R nodeuser:nodejs /app/session || true
 # Remove Chromium lock files that may remain from a crashed session
-rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie"
+rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie" "$SESSION_DIR/SingletonSocket"
 mkdir -p /app/session && chown -R node:node /app/session
 exec su -s /bin/sh nodeuser -c "node index.js"

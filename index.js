@@ -29,10 +29,45 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
 
   try {
+
+    // Asegurar que SESSION_PATH exista con los permisos correctos
+    console.log(`[INFO] Verificando el directorio de sesión: ${SESSION_PATH}`);
+    try {
+      if (!fs.existsSync(SESSION_PATH)) {
+        fs.mkdirSync(SESSION_PATH, { recursive: true });
+        console.log(`[INFO] Directorio ${SESSION_PATH} creado.`);
+      }
+    } catch (err) {
+      console.error(`[ERROR] No se pudo preparar el directorio ${SESSION_PATH}:`, err);
+    }
     const executablePath = await puppeteer.executablePath();
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
 
     // Intentar eliminar el archivo SingletonLock para prevenir errores de perfil en uso
+    const puppeteerSessionPath = path.join(SESSION_PATH, 'session'); // Este es el user-data-dir que Puppeteer usa según los logs
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    lockFiles.forEach(file => {
+      const filePath = path.join(puppeteerSessionPath, file);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[INFO] Se eliminó el archivo ${file} existente en: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(`[WARN] No se pudo eliminar ${filePath}:`, err.message);
+      }
+    });
+
+    // Adicionalmente, asegúrate de que el directorio base de la sesión de puppeteer exista,
+    // ya que LocalAuth podría esperarlo.
+    try {
+      if (!fs.existsSync(puppeteerSessionPath)) {
+        fs.mkdirSync(puppeteerSessionPath, { recursive: true });
+        console.log(`[INFO] Se creó el directorio para la sesión de Puppeteer en: ${puppeteerSessionPath}`);
+      }
+    } catch (err) {
+      console.warn(`[WARN] No se pudo crear el directorio para la sesión de Puppeteer en ${puppeteerSessionPath}:`, err.message);
+
     const puppeteerUserDataPath = path.join(SESSION_DATA_PATH, 'session');
     const singletonLockPath = path.join(puppeteerUserDataPath, 'SingletonLock');
 
@@ -49,6 +84,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       }
     } catch (err) {
       console.warn(`[WARN] No se pudo eliminar el archivo SingletonLock o crear el directorio del perfil en ${singletonLockPath}:`, err.message);
+
     }
 
     const client = new Client({
