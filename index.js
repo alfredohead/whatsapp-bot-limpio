@@ -4,24 +4,14 @@ const express = require('express');
 require("dotenv").config();
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
-const { OpenAI } = require("openai");
-const puppeteer = require('puppeteer'); // Importar puppeteer
-const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
+const puppeteer = require('puppeteer');
+const { getWeather, getEfemeride, getCurrentTime } = require('./functions-handler');
+const { runAssistant } = require('./openaiAssistant');
 const fs = require('fs');
 const path = require('path');
 
 const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más específica para LocalAuth
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
-
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-
-// Constantes para el sondeo (polling)
-const POLLING_INTERVAL_MS = 2000; // Intervalo de sondeo: 2 segundos
-const MAX_POLLING_ATTEMPTS = 30; // Máximo de intentos: 30 (total ~60 segundos)
-
-// Función de utilidad para esperar
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// Las claves OPENAI se manejan dentro de openaiAssistant.js
 
 // Ya no se define puppeteerUserDataPath aquí
 
@@ -29,37 +19,15 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
 
   try {
-    // Limpiar el directorio SESSION_PATH al inicio para asegurar un estado limpio
-    console.log(`[INFO] Verificando y limpiando el directorio de sesión: ${SESSION_PATH}`);
+    // Asegurar que SESSION_PATH exista con los permisos correctos
+    console.log(`[INFO] Verificando el directorio de sesión: ${SESSION_PATH}`);
     try {
-      if (fs.existsSync(SESSION_PATH)) {
-        console.log(`[INFO] El directorio ${SESSION_PATH} existe. Eliminando su contenido...`);
-        // Eliminar todos los archivos y subdirectorios dentro de SESSION_PATH
-        fs.readdirSync(SESSION_PATH).forEach(file => {
-          const filePath = path.join(SESSION_PATH, file);
-          if (fs.lstatSync(filePath).isDirectory()) {
-            fs.rmSync(filePath, { recursive: true, force: true });
-            console.log(`[INFO] Subdirectorio eliminado: ${filePath}`);
-          } else {
-            fs.unlinkSync(filePath);
-            console.log(`[INFO] Archivo eliminado: ${filePath}`);
-          }
-        });
-        console.log(`[INFO] Contenido de ${SESSION_PATH} eliminado.`);
-      } else {
-        console.log(`[INFO] El directorio ${SESSION_PATH} no existe. Creándolo...`);
+      if (!fs.existsSync(SESSION_PATH)) {
         fs.mkdirSync(SESSION_PATH, { recursive: true });
         console.log(`[INFO] Directorio ${SESSION_PATH} creado.`);
       }
-      // Asegurarse de que SESSION_PATH exista después de la limpieza (si se eliminó y recreó o solo se creó)
-      if (!fs.existsSync(SESSION_PATH)) {
-        fs.mkdirSync(SESSION_PATH, { recursive: true });
-        console.log(`[INFO] Se re-creó el directorio ${SESSION_PATH} como medida de seguridad.`);
-      }
     } catch (err) {
-      console.error(`[ERROR] Error al limpiar o crear el directorio ${SESSION_PATH}:`, err);
-      // Decide si quieres salir o continuar si hay un error aquí.
-      // Por ahora, solo se registrará el error.
+      console.error(`[ERROR] No se pudo preparar el directorio ${SESSION_PATH}:`, err);
     }
 
     const executablePath = await puppeteer.executablePath();
@@ -67,16 +35,18 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     // Intentar eliminar el archivo SingletonLock para prevenir errores de perfil en uso
     const puppeteerSessionPath = path.join(SESSION_PATH, 'session'); // Este es el user-data-dir que Puppeteer usa según los logs
-    const singletonLockPath = path.join(puppeteerSessionPath, 'SingletonLock');
-
-    try {
-      if (fs.existsSync(singletonLockPath)) {
-        fs.unlinkSync(singletonLockPath);
-        console.log(`[INFO] Se eliminó el archivo SingletonLock existente en: ${singletonLockPath}`);
+    const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+    lockFiles.forEach(file => {
+      const filePath = path.join(puppeteerSessionPath, file);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`[INFO] Se eliminó el archivo ${file} existente en: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(`[WARN] No se pudo eliminar ${filePath}:`, err.message);
       }
-    } catch (err) {
-      console.warn(`[WARN] No se pudo eliminar el archivo SingletonLock en ${singletonLockPath}:`, err.message);
-    }
+    });
 
     // Adicionalmente, asegúrate de que el directorio base de la sesión de puppeteer exista,
     // ya que LocalAuth podría esperarlo.
@@ -94,6 +64,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       puppeteer: {
         headless: true,
         executablePath: executablePath,
+        ignoreHTTPSErrors: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -104,7 +75,9 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           '--disable-features=ProcessSingleton',
           '--no-first-run',
           '--no-default-browser-check',
-          '--disable-breakpad', // <--- Nuevo flag añadido
+          '--disable-breakpad',
+          '--disable-crash-reporter',
+          '--ignore-certificate-errors',
         ],
       },
     });
@@ -142,108 +115,13 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           return msg.reply(info);
         }
 
-        let assistantResponseForUser = "🤖 Lo siento, no tengo una respuesta clara en este momento.";
         try {
-          let run = await openai.beta.threads.createAndRun({
-            assistant_id: ASSISTANT_ID,
-            thread: { messages: [{ role: "user", content: body }] },
-          });
-
-          let pollingAttempts = 0;
-          while (pollingAttempts < MAX_POLLING_ATTEMPTS) {
-            console.log(`[OpenAI Run] ID: ${run.id}, Estado: ${run.status}, Intento de sondeo: ${pollingAttempts + 1}/${MAX_POLLING_ATTEMPTS}`);
-
-            if (run.status === 'completed') {
-              const messagesPage = await openai.beta.threads.messages.list(run.thread_id, { limit: 5, order: 'desc' });
-              const assistantMessages = messagesPage.data.filter(m => m.role === 'assistant');
-              if (assistantMessages.length > 0) {
-                const latestAssistantMessage = assistantMessages[0];
-                if (latestAssistantMessage.content && latestAssistantMessage.content[0]?.type === 'text') {
-                  assistantResponseForUser = latestAssistantMessage.content[0].text.value;
-                } else if (latestAssistantMessage.content && latestAssistantMessage.content.length > 0) {
-                  assistantResponseForUser = "🤖 He procesado tu solicitud y tengo una respuesta compleja (no solo texto).";
-                  console.log("[OpenAI] Respuesta no textual:", latestAssistantMessage.content);
-                }
-              } else {
-                console.warn("[OpenAI] Run completado pero sin mensajes del asistente en el hilo:", run.id);
-                assistantResponseForUser = "🤖 El asistente procesó tu solicitud pero no generó un mensaje visible. Intenta reformular.";
-              }
-              break;
-            } else if (run.status === 'failed') {
-              console.error("❌ OpenAI Run falló. ID:", run.id, "Error:", run.last_error);
-              assistantResponseForUser = `⚠️ Hubo un error con el asistente (Fallo: ${run.last_error?.code || 'UnknownError'}). Intenta nuevamente.`;
-              break;
-            } else if (run.status === 'requires_action') {
-              if (run.required_action && run.required_action.type === 'submit_tool_outputs') {
-                const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
-                let toolOutputs = [];
-                console.log(`[OpenAI Tool Call] Run ID ${run.id} requiere acción: submit_tool_outputs. ${toolCalls.length} herramienta(s) por llamar.`);
-                for (const toolCall of toolCalls) {
-                  let output = "";
-                  console.log(`[OpenAI Tool Call] Ejecutando función: ${toolCall.function.name}, ID de llamada: ${toolCall.id}`);
-                  try {
-                    if (toolCall.function.name === 'get_clima_actual') {
-                      output = await getWeather();
-                    } else if (toolCall.function.name === 'fetchEfemeride') {
-                      output = getEfemeride();
-                    } else if (toolCall.function.name === 'get_current_time') {
-                      output = getCurrentTime();
-                    } else if (toolCall.function.name === 'access_web') {
-                      output = "Actualmente no puedo acceder a información web externa para esta solicitud.";
-                    } else {
-                      console.warn(`[OpenAI Tool Call] Función desconocida: ${toolCall.function.name}`);
-                      output = `Error: Función desconocida '${toolCall.function.name}' solicitada por el asistente.`;
-                    }
-                  } catch (toolError) {
-                    console.error(`[OpenAI Tool Call] Error al ejecutar la herramienta ${toolCall.function.name}:`, toolError.stack);
-                    output = `Error interno al ejecutar la herramienta ${toolCall.function.name}.`;
-                  }
-                  toolOutputs.push({ tool_call_id: toolCall.id, output: output });
-                }
-                if (toolOutputs.length > 0) {
-                  console.log(`[OpenAI Tool Call] Enviando salidas de herramientas para Run ID ${run.id}:`, toolOutputs);
-                  run = await openai.beta.threads.runs.submitToolOutputs(run.thread_id, run.id, { tool_outputs: toolOutputs });
-                } else {
-                  console.warn(`[OpenAI Tool Call] No se generaron salidas de herramientas para Run ID ${run.id}. Esto puede ser un error.`);
-                }
-              } else {
-                console.warn(`[OpenAI Run] Estado 'requires_action' con tipo desconocido: ${run.required_action?.type}. Run ID: ${run.id}`);
-                assistantResponseForUser = "🤖 El asistente requiere una acción que no reconozco. Por favor, intenta de nuevo.";
-                break;
-              }
-            } else if (['queued', 'in_progress'].includes(run.status)) {
-              await delay(POLLING_INTERVAL_MS);
-              run = await openai.beta.threads.runs.retrieve(run.thread_id, run.id);
-            } else {
-              console.warn(`[OpenAI Run] Estado terminal no manejado explícitamente: ${run.status}. Run ID: ${run.id}`);
-              assistantResponseForUser = `🤖 El procesamiento de tu solicitud terminó con estado: ${run.status}.`;
-              break;
-            }
-            pollingAttempts++;
-          }
-
-          if (pollingAttempts >= MAX_POLLING_ATTEMPTS && !['completed', 'failed', 'cancelled', 'expired'].includes(run.status)) {
-            console.warn(`[OpenAI Polling] Run ID ${run.id} alcanzó el máximo de sondeos (${MAX_POLLING_ATTEMPTS}) sin llegar a un estado terminal completo. Estado final: ${run.status}.`);
-            assistantResponseForUser = `🤖 El procesamiento de tu solicitud está tardando más de lo esperado (estado final: ${run.status}). Por favor, intenta nuevamente en unos momentos.`;
-          }
-        } catch (openaiError) {
-          console.error("❌ Error durante la interacción con API de OpenAI:", openaiError.stack);
-          let userFacingErrorMessage = "⚠️ Hubo un error al comunicarme con el asistente de IA. Intenta nuevamente más tarde.";
-          if (openaiError.status) {
-            console.error(`  OpenAI Error Details: Status=${openaiError.status}, Code=${openaiError.code}, Type=${openaiError.type}, Message=${openaiError.message}`);
-            if (openaiError.status === 429) {
-                userFacingErrorMessage = "⚠️ Demasiadas solicitudes al asistente. Por favor, espera un momento y vuelve a intentarlo.";
-            } else if (openaiError.status === 401) {
-                userFacingErrorMessage = "⚠️ Problema de autenticación con el asistente. Notifica al administrador.";
-            } else if (openaiError.status === 400) {
-                userFacingErrorMessage = `⚠️ Tu solicitud no pudo ser procesada por el asistente (Error: ${openaiError.code || openaiError.status}). Verifica tu mensaje o intenta de forma diferente.`;
-            } else if (openaiError.status >= 500) {
-                userFacingErrorMessage = "⚠️ El servicio del asistente de IA está experimentando problemas. Intenta más tarde.";
-            }
-          }
-          assistantResponseForUser = userFacingErrorMessage;
+          const assistantResponseForUser = await runAssistant(body);
+          return msg.reply(`${assistantResponseForUser}\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`);
+        } catch (error) {
+          console.error("❌ Error en el asistente de OpenAI:", error.stack);
+          return msg.reply("⚠️ Hubo un error general procesando tu mensaje. Intenta nuevamente más tarde.");
         }
-        return msg.reply(`${assistantResponseForUser}\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`);
       } catch (error) {
         console.error("❌ Error en el manejador de mensajes (fuera de OpenAI):", error.stack);
         if (!msg.hasReplied) {
@@ -286,7 +164,23 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     });
 
     console.log("🚀 Inicializando cliente de WhatsApp...");
-    await client.initialize();
+    try {
+      await client.initialize();
+    } catch(initErr) {
+      console.error("❌ Error al inicializar el cliente:", initErr.message);
+      if (initErr.message && initErr.message.includes("Target closed")) {
+        console.warn(`[WARN] Posible sesi\u00f3n corrupta. Borrando ${SESSION_PATH} y reintentando...`);
+        try {
+          fs.rmSync(SESSION_PATH, { recursive: true, force: true });
+          fs.mkdirSync(SESSION_PATH, { recursive: true });
+        } catch (rmErr) {
+          console.error(`[ERROR] No se pudo reiniciar el directorio de sesi\u00f3n:`, rmErr.message);
+        }
+        await client.initialize();
+      } else {
+        throw initErr;
+      }
+    }
     console.log("🚀 Cliente de WhatsApp inicializado.");
     console.log("🚀🚀🚀 Final de la configuración del cliente y handlers. Esperando eventos...");
 
