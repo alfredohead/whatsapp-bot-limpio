@@ -19,7 +19,8 @@ primary_region = "eze"
   cpus = 2
 
 [processes]
-  app = "/app/start.sh"
+  app = "/start.sh"
+
 
 [[services]]
   internal_port = 3000
@@ -30,7 +31,7 @@ primary_region = "eze"
   min_machines_running = 1
 
   [services.http_checks]
-    grace_period = "30s"
+    grace_period = "90s" # Modificado de "30s"
     interval = "15s"
     method = "GET"
     timeout = "5s"
