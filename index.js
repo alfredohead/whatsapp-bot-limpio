@@ -10,7 +10,7 @@ const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handle
 const fs = require('fs');
 const path = require('path');
 
-const SESSION_PATH = "./session/wwebjs_auth_data"; // Modificado: Ruta más específica para LocalAuth
+const SESSION_DATA_PATH = "./session/wwebjs_auth_data";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 
@@ -29,6 +29,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
   let readyTimeout; // Declarar readyTimeout aquí para que sea accesible
 
   try {
+
     // Asegurar que SESSION_PATH exista con los permisos correctos
     console.log(`[INFO] Verificando el directorio de sesión: ${SESSION_PATH}`);
     try {
@@ -39,7 +40,6 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     } catch (err) {
       console.error(`[ERROR] No se pudo preparar el directorio ${SESSION_PATH}:`, err);
     }
-
     const executablePath = await puppeteer.executablePath();
     console.log("🚀 Usando Chromium de Puppeteer en:", executablePath);
 
@@ -67,10 +67,28 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       }
     } catch (err) {
       console.warn(`[WARN] No se pudo crear el directorio para la sesión de Puppeteer en ${puppeteerSessionPath}:`, err.message);
+
+    const puppeteerUserDataPath = path.join(SESSION_DATA_PATH, 'session');
+    const singletonLockPath = path.join(puppeteerUserDataPath, 'SingletonLock');
+
+    try {
+      // Asegurar que el directorio base del perfil de Puppeteer exista antes de intentar acceder a SingletonLock
+      if (!fs.existsSync(puppeteerUserDataPath)) {
+        fs.mkdirSync(puppeteerUserDataPath, { recursive: true });
+        console.log(`[INFO] Se creó el directorio para el perfil de Puppeteer en: ${puppeteerUserDataPath} ya que no existía.`);
+      }
+
+      if (fs.existsSync(singletonLockPath)) {
+        fs.unlinkSync(singletonLockPath);
+        console.log(`[INFO] Se eliminó el archivo SingletonLock existente en: ${singletonLockPath}`);
+      }
+    } catch (err) {
+      console.warn(`[WARN] No se pudo eliminar el archivo SingletonLock o crear el directorio del perfil en ${singletonLockPath}:`, err.message);
+
     }
 
     const client = new Client({
-      authStrategy: new LocalAuth({ dataPath: SESSION_PATH }), // LocalAuth gestiona la sesión de wwebjs
+      authStrategy: new LocalAuth({ dataPath: SESSION_DATA_PATH }), // Usar la ruta de sesión principal
       puppeteer: {
         headless: true,
         executablePath: executablePath,
