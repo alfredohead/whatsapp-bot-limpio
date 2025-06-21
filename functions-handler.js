@@ -1,7 +1,6 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 
-// const cheerio = require('cheerio'); // No longer used by getWeather
-// const fetch = require('node-fetch'); // No longer used by getWeather
+const axios = require('axios');
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {
@@ -48,9 +47,29 @@ Municipalidad de General San Martín.`;
   }
 }
 
-async function getWeather() { // The async keyword can be removed if no await is used, but it's harmless.
-  console.log('[getWeather] Devolviendo respuesta temporal. Fuente de datos original no disponible.');
-  return `🌦️ Lo siento, el servicio de información meteorológica no está disponible en este momento. Por favor, intenta más tarde.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+async function getWeather() {
+  const apiKey = process.env.ACCUWEATHER_API_KEY;
+  const locationKey = '7880_AR'; // San Martín, Mendoza
+
+  try {
+    const response = await axios.get(`http://dataservice.accuweather.com/currentconditions/v1/${locationKey}`, {
+      params: {
+        apikey: apiKey,
+        language: 'es-ar',
+        details: true
+      }
+    });
+
+    const data = response.data[0];
+    const temp = data.Temperature.Metric.Value;
+    const desc = data.WeatherText;
+
+    return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${desc.toLowerCase()}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+
+  } catch (error) {
+    console.error("❌ Error al obtener el clima desde AccuWeather:", error.response?.data || error.message);
+    return `⚠️ No pude obtener el clima actual. Verificá la conexión o la clave API.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+  }
 }
 
 module.exports = {
