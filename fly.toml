@@ -6,6 +6,10 @@
 app = 'whatsapp-bot-limpio'
 primary_region = 'eze'
 
+[mounts]
+  source = "wwebjs_auth_vol" 
+  destination = "/app/session"
+
 [build]
   dockerfile = "Dockerfile"
 
