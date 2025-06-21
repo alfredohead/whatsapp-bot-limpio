@@ -1,6 +1,10 @@
 // index.js FINAL DEFINITIVO - Bot WhatsApp Corregido y Depurado
 // Versión estable con gestión mejorada de runs concurrentes
 
+// Intento para limpiar logs de puppeteer:protocol. Si DEBUG ya está seteado a algo útil, esto no lo sobrescribirá.
+// Si DEBUG es '*' o 'puppeteer:*', esto no lo cambiará si está seteado externamente.
+process.env.DEBUG = process.env.DEBUG || '';
+
 require("dotenv").config();
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
@@ -67,7 +71,8 @@ const client = new Client({
       "--disable-renderer-backgrounding",
       "--memory-pressure-off",
       `--user-data-dir=/app/session/wwebjs_auth_data` // Asegurar que Puppeteer use el volumen montado
-    ]
+    ],
+    dumpio: false // Aunque es el valor por defecto, lo establecemos explícitamente.
   },
   authStrategy: new LocalAuth({
     dataPath: "/app/session/wwebjs_auth_data" // Ruta absoluta para LocalAuth
