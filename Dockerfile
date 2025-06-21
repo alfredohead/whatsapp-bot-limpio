@@ -54,13 +54,16 @@ RUN mkdir -p /app/session && chown -R nodeuser:nodejs /app/session
 # Copia el resto del proyecto con permisos para nodeuser
 COPY --chown=nodeuser:nodejs . .
 
+# Asegura que el script de inicio sea ejecutable
+RUN chmod +x /app/start.sh
+
 # Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
 EXPOSE 3000
 
-# Cambia al usuario no root para ejecutar la aplicación
-USER nodeuser
+# Ejecuta el contenedor como root para que start.sh pueda ajustar permisos
+USER root
 
-# Comando principal
-CMD ["node", "index.js"]
+# Comando principal que prepara la sesión y lanza la app como nodeuser
+CMD ["/app/start.sh"]
 
 
