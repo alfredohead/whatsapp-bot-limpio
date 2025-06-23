@@ -53,25 +53,25 @@ async function getWeather() {
   const lon = -68.4692;
 
   try {
-    const response = await axios.get("https://api.openweathermap.org/data/3.0/onecall", {
+    const response = await axios.get("https://api.openweathermap.org/data/2.5/weather", {
       params: {
         lat,
         lon,
         appid: apiKey,
-        units: "metric",
-        lang: "es"
+        units: 'metric',
+        lang: 'es'
       }
     });
 
-    const current = response.data.current;
-    const temp = current.temp;
-    const description = current.weather[0].description;
+    const data = response.data;
+    const temp = data.main.temp;
+    const desc = data.weather[0].description;
 
-    return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${description}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+    return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${desc}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 
   } catch (error) {
-    console.error("❌ Error al obtener el clima desde One Call API 3.0:", error.response?.data || error.message);
-    return `⚠️ No pude obtener el clima actual desde OpenWeather. Verificá tu clave o conexión.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+    console.error("❌ Error al obtener el clima:", error.response?.data || error.message);
+    return `⚠️ No pude obtener el clima actual. Verificá tu clave o conexión.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
   }
 }
 
