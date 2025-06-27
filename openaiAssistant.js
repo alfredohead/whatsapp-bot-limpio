@@ -4,6 +4,11 @@ require('dotenv').config();
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
+const OPENWEATHER_KEY = process.env.OPENWEATHER_KEY;
+
+if (!process.env.OPENWEATHER_API_KEY && OPENWEATHER_KEY) {
+  process.env.OPENWEATHER_API_KEY = OPENWEATHER_KEY;
+}
 const POLLING_INTERVAL_MS = 2000;
 const MAX_POLLING_ATTEMPTS = 30;
 
