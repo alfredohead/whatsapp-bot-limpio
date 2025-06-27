@@ -7,6 +7,7 @@ const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const http = require("http");
+const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 
 // ----------------------------------------------------
 // 1. Configuración y Validación
@@ -14,6 +15,10 @@ const http = require("http");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
 const OPENWEATHER_KEY = process.env.OPENWEATHER_KEY; // Asegurarse de que esta también se lea
+
+if (!process.env.OPENWEATHER_API_KEY && OPENWEATHER_KEY) {
+  process.env.OPENWEATHER_API_KEY = OPENWEATHER_KEY;
+}
 
 if (!OPENAI_API_KEY || !OPENAI_ASSISTANT_ID || !OPENWEATHER_KEY) {
   console.error("❌ [CRÍTICO] Variables de entorno faltantes. Asegúrate de que OPENAI_API_KEY, OPENAI_ASSISTANT_ID y OPENWEATHER_KEY estén configuradas.");
@@ -365,7 +370,7 @@ async function esperarCompletado(threadId, runId, timeoutMs) {
   while (Date.now() < maxTime) {
     try {
       const run = await openai.beta.threads.runs.retrieve(threadId, runId);
-      
+
       if (run.status === "completed") {
         const messages = await openai.beta.threads.messages.list(threadId);
         const lastMessage = messages.data[0];
@@ -380,7 +385,43 @@ async function esperarCompletado(threadId, runId, timeoutMs) {
           return respuesta;
         }
       }
-      
+
+      if (run.status === "requires_action" && run.required_action?.type === "submit_tool_outputs") {
+        const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
+        const toolOutputs = [];
+        for (const toolCall of toolCalls) {
+          let output = "";
+          try {
+            switch (toolCall.function.name) {
+              case "get_clima_actual":
+                output = await getWeather();
+                break;
+              case "fetchEfemeride":
+                output = getEfemeride();
+                break;
+              case "get_current_time":
+                output = getCurrentTime();
+                break;
+              case "access_web":
+                output = "Actualmente no puedo acceder a información web externa para esta solicitud.";
+                break;
+              default:
+                output = `Error: Función desconocida '${toolCall.function.name}' solicitada por el asistente.`;
+            }
+          } catch (err) {
+            output = `Error interno al ejecutar la herramienta ${toolCall.function.name}.`;
+          }
+          toolOutputs.push({ tool_call_id: toolCall.id, output });
+        }
+
+        if (toolOutputs.length > 0) {
+          await openai.beta.threads.runs.submitToolOutputs(threadId, runId, { tool_outputs: toolOutputs });
+        } else {
+          throw new Error("No se pudieron procesar las herramientas solicitadas por el asistente.");
+        }
+        continue; // seguir el loop hasta nueva recuperación
+      }
+
       if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
         throw new Error(`Run ${run.status}: ${run.last_error?.message || "Error desconocido"}`);
       }
