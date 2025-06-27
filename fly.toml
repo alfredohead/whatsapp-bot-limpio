@@ -9,6 +9,10 @@ primary_region = 'eze'
 [build]
   dockerfile = "Dockerfile"
 
+  [mounts]
+source = "wwebjs_auth_vol"
+destination = "/app/session"
+
 [http_service]
   internal_port = 3000
   force_https = true
