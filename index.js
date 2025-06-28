@@ -16,14 +16,16 @@ const { speechToText } = require("./speech-utils.js");
 // ----------------------------------------------------
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_ASSISTANT_ID = process.env.OPENAI_ASSISTANT_ID;
-const OPENWEATHER_KEY = process.env.OPENWEATHER_KEY; // Asegurarse de que esta también se lea
+// Se unifica el manejo de la clave de OpenWeather. Se prioriza OPENWEATHER_API_KEY.
+const OPENWEATHER_API_KEY_ENV = process.env.OPENWEATHER_API_KEY || process.env.OPENWEATHER_KEY;
 
-if (!process.env.OPENWEATHER_API_KEY && OPENWEATHER_KEY) {
-  process.env.OPENWEATHER_API_KEY = OPENWEATHER_KEY;
+if (OPENWEATHER_API_KEY_ENV) {
+  // Asegura que la variable que usará el resto del código esté seteada.
+  process.env.OPENWEATHER_API_KEY = OPENWEATHER_API_KEY_ENV;
 }
 
-if (!OPENAI_API_KEY || !OPENAI_ASSISTANT_ID || !OPENWEATHER_KEY) {
-  console.error("❌ [CRÍTICO] Variables de entorno faltantes (OPENAI_API_KEY, OPENAI_ASSISTANT_ID, OPENWEATHER_KEY).");
+if (!OPENAI_API_KEY || !OPENAI_ASSISTANT_ID || !OPENWEATHER_API_KEY_ENV) {
+  console.error("❌ [CRÍTICO] Variables de entorno faltantes (OPENAI_API_KEY, OPENAI_ASSISTANT_ID, OPENWEATHER_API_KEY).");
   process.exit(1);
 }
 
@@ -759,7 +761,7 @@ async function procesarAudio(message) {
     console.log(`💾 [AUDIO] Archivo guardado temporalmente: ${tempFilePath}`);
     
     // Transcribir el audio
-    const textoTranscrito = await speechToText(tempFilePath);
+    const textoTranscrito = await speechToText(openai, tempFilePath);
     
     if (!textoTranscrito || textoTranscrito.trim().length === 0) {
       await message.reply("🎵 No pude entender el audio. Por favor, intenta enviar un mensaje de texto o un audio más claro.");
@@ -1030,4 +1032,3 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 console.log("✅ [READY] Bot WhatsApp Municipalidad San Martín iniciado correctamente");
-

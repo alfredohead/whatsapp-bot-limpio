@@ -37,29 +37,24 @@ async function textToSpeech(text, lang = 'es', outFile = 'tts-output.mp3') {
  * @param {string} audioFile - Ruta del archivo de audio.
  * @returns {Promise<string>} Texto transcripto.
  */
-async function speechToText(audioFile) {
-  const token = process.env.WITAI_TOKEN;
-  if (!token) throw new Error('WITAI_TOKEN no definido');
+async function speechToText(openai, audioFile) {
+  if (!openai) {
+    throw new Error("La instancia del cliente de OpenAI es requerida.");
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("La variable de entorno OPENAI_API_KEY no está definida.");
+  }
 
-  const stream = fs.createReadStream(audioFile);
-  const res = await fetch('https://api.wit.ai/speech?v=20230215', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-
-'Content-Type': 'audio/mpeg'
-    },
-    body: stream
-  });
-
-
-if (!res.ok) {
-  const errorBody = await res.text();
-  throw new Error(`Wit.ai error ${res.status}: ${errorBody}`);
-}
-
-  const data = await res.json();
-  return data.text || '';
+  try {
+    const transcription = await openai.audio.transcriptions.create({
+      file: fs.createReadStream(audioFile),
+      model: "whisper-1",
+    });
+    return transcription.text || "";
+  } catch (error) {
+    console.error(`❌ Error en la transcripción con Whisper: ${error.message}`);
+    throw new Error(`La transcripción con Whisper falló: ${error.message}`);
+  }
 }
 
 module.exports = { textToSpeech, speechToText };
