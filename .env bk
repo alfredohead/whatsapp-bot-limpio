@@ -1,0 +1,6 @@
+OPENAI_API_KEY=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
+OPENAI_ASSISTANT_ID=asst_0R8eGPf8QvLT9favCxtiHQo2
+OPENWEATHER_API_KEY=3b8b6dc8bcd567d2c698e86263e33fd5
+# Puppeteer path (only override if Chromium is not detected automatically)
+# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+RUN chmod +x /app/start.sh
