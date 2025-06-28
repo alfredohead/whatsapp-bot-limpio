@@ -1,15 +1,13 @@
-# Archivo .dockerignore para optimizar el build
+# Este archivo evita que archivos locales innecesarios o sensibles
+# se envíen al contexto de build de Docker, haciendo el proceso
+# más rápido y seguro.
+
+# Ignorar dependencias locales
 node_modules
-npm-debug.log
+
+# Ignorar archivos de entorno y secretos
+.env
+
+# Ignorar metadatos de Git
 .git
 .gitignore
-README.md
-.env
-.nyc_output
-coverage
-.nyc_output
-.coverage
-.coverage/
-session/
-*.log
-

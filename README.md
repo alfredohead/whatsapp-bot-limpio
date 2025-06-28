@@ -29,4 +29,6 @@ El bot mantiene la sesión de WhatsApp usando volúmenes persistentes y responde
 La lógica de interacción con la API de OpenAI se encuentra en `openaiAssistant.js`,
 que se encarga de crear los hilos y manejar las llamadas a herramientas.
 
+
 Si el contenedor no puede encontrar Chromium automáticamente, define `PUPPETEER_EXECUTABLE_PATH` en tu `.env` apuntando a la ruta del binario.
+

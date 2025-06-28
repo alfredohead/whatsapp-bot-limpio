@@ -1,17 +1,32 @@
-# fly.toml app configuration file generated for whatsapp-bot-limpio on 2025-06-21T01:46:02-03:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
 app = 'whatsapp-bot-limpio'
 primary_region = 'eze'
 
+# La sección [build] solo define cómo se construye la imagen.
 [build]
   dockerfile = "Dockerfile"
+
+# La sección [mounts] debe estar en el nivel superior, no dentro de [build].
+# Define el volumen persistente para guardar la sesión de WhatsApp.
+[mounts]
+  source = "wwebjs_auth_vol"
+  destination = "/app/session"
 
 [http_service]
   internal_port = 3000
   force_https = true
+  # Estas configuraciones son cruciales para un bot 24/7
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Health check para que Fly.io sepa si tu bot está funcionando.
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "10s"
+    grace_period = "30s" # Tiempo para que la app inicie antes de empezar los checks
+    method = "get"
+    path = "/health"
+    protocol = "http"
 
 [[vm]]
   memory = "2gb"
