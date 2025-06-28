@@ -51,32 +51,32 @@ COPY --from=dependencies / /
 # Crear un usuario no-root para mayor seguridad
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Establecer la propiedad del directorio de trabajo (/app) al appuser
-RUN chown -R appuser:appuser /app
-
-# Copiar archivos de la aplicación y establecer permisos
 # Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
+# Esto se hace primero para aprovechar el cache de Docker y acelerar builds futuros.
 COPY package.json package-lock.json ./
 
-# Usamos 'npm install' como alternativa a 'npm ci'. Aunque 'ci' es preferible para builds
-# reproducibles, 'install' es más flexible si 'package-lock.json' no se encuentra
-# en el contexto de build (posiblemente por un archivo .dockerignore).
-# --omit=dev asegura que solo se instalen las dependencias de producción.
+# Instalar dependencias de producción.
 RUN npm install --omit=dev
 
-COPY --chown=appuser:appuser . .
+# Copiar el resto del código de la aplicación
+COPY . .
 
-# El volumen se montará en /app/session. Nos aseguramos de que el directorio exista
-# y que el usuario 'appuser' tenga permisos sobre él.
-# También creamos el directorio para audios temporales y le damos permisos.
-RUN mkdir -p /app/session /app/temp_audio && \
-    chown -R appuser:appuser /app/session /app/temp_audio
 
-# Cambiar al usuario no-root
-USER appuser
+# Asegura que el script de inicio sea ejecutable
+RUN chmod +x /app/start.sh
+
+# Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
+EXPOSE 3000
+
+# Ejecuta el contenedor como root para que start.sh pueda ajustar permisos
+USER root
+
+# Comando principal que prepara la sesión y lanza la app como nodeuser
+CMD ["/app/start.sh"]
 
 # Exponer el puerto que Fly.io usará internamente
 EXPOSE 3000
 
 # Comando para iniciar la aplicación
 CMD ["node", "index.js"]
+

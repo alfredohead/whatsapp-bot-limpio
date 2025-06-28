@@ -501,203 +501,298 @@ async function manejarComandoAdmin(message) {
         
       case body.startsWith("!human"):
         humanModeUsers.add(chatId);
-        await message.reply("🧑 Modo humano activado. Tus mensajes no serán procesados por IA.");
+        await message.reply("🧑‍💼 *Modo humano activado*\nTus mensajes no serán procesados por el asistente IA hasta que uses `!ai`");
         break;
         
       case body.startsWith("!ai"):
         humanModeUsers.delete(chatId);
-        await message.reply("🤖 Modo IA reactivado. Volviendo al procesamiento automático.");
+        await message.reply("🤖 *Modo IA activado*\nTus mensajes serán procesados por el asistente IA");
         break;
         
       default:
-        await message.reply("❓ Comando no reconocido. Usa !help para ver comandos disponibles.");
+        await message.reply("❓ Comando no reconocido. Usa `!help` para ver comandos disponibles.");
     }
   } catch (error) {
-    console.error("❌ [ERROR-COMANDO]", error);
-    await message.reply("❌ Error al ejecutar comando.");
-  }
-}
-
-// ✅ NUEVA FUNCIÓN: Limpiar runs globales
-async function limpiarRunsGlobales(message) {
-  try {
-    const runsAntesLimpieza = activeRuns.size;
-    
-    console.log(`🧹 [CLEANUP-GLOBAL] Iniciando limpieza de ${runsAntesLimpieza} runs activos`);
-    
-    const threadsAfectados = new Set();
-    for (let [runId, runInfo] of activeRuns.entries()) {
-      threadsAfectados.add(runInfo.threadId);
-      try {
-        await openai.beta.threads.runs.cancel(runInfo.threadId, runId);
-        console.log(`✅ [CLEANUP-CANCEL] Run cancelado: ${runId}`);
-      } catch (error) {
-        console.log(`⚠️ [CLEANUP-CANCEL-ERROR] ${runId}: ${error.message}`);
-      }
-    }
-    
-    activeRuns.clear();
-    stats.runs_cancelados += runsAntesLimpieza;
-    
-    await message.reply(`🧹 *Limpieza Completada*\n\n✅ Runs cancelados: ${runsAntesLimpieza}\n🧵 Threads afectados: ${threadsAfectados.size}\n📊 Total runs cancelados: ${stats.runs_cancelados}\n\nSistema optimizado y listo.`);
-
-  } catch (error) {
-    console.error("❌ [ERROR-CLEANUP-GLOBAL]", error);
-    await message.reply("❌ Error durante la limpieza global.");
+    console.error("❌ [ERROR-ADMIN]", error);
+    await message.reply("❌ Error al procesar comando administrativo");
   }
 }
 
 async function enviarStats(message) {
   const uptime = obtenerUptime();
-  const tasaExito = stats.mensajes_recibidos > 0 ? 
-    Math.round((stats.respuestas_exitosas / stats.mensajes_recibidos) * 100) : 0;
-  const tiempoPromedio = stats.tiempo_promedio.length > 0 ? 
-    (stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length / 1000).toFixed(1) : "0";
-  const tasaTimeoutPrimer = stats.mensajes_recibidos > 0 ? 
-    Math.round((stats.timeouts_primer_intento / stats.mensajes_recibidos) * 100) : 0;
-    
-  const statsMessage = `📊 *Estadísticas del Bot - MEJORADO*\n\n⏰ *Uptime:* ${uptime} minutos\n📊 *Performance:*\n  • Mensajes recibidos: ${stats.mensajes_recibidos}\n  • Mensajes filtrados: ${stats.mensajes_filtrados}\n  • Respuestas exitosas: ${stats.respuestas_exitosas}\n  • Respuestas por reintento: ${stats.respuestas_reintento}\n  • Tasa de éxito: ${tasaExito}%\n\n⚡ *Tiempos:*\n  • Tiempo promedio: ${tiempoPromedio}s\n  • Timeouts primer intento: ${stats.timeouts_primer_intento}\n  • Timeouts totales: ${stats.timeouts_totales}\n\n🔄 *Gestión de Runs:*\n  • Runs cancelados: ${stats.runs_cancelados}\n\n🚨 *Errores:*\n  • Errores generales: ${stats.errores}\n\n👤 *Usuarios:*\n  • Usuarios nuevos: ${stats.usuarios_nuevos}\n\n_Última actualización: ${new Date().toLocaleString()}_`;
+  const promedioTiempo = stats.tiempo_promedio.length > 0 
+    ? formatearTiempo(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length)
+    : "0.0";
+  
+  const statsText = `📊 *ESTADÍSTICAS DEL BOT*
 
-  await message.reply(statsMessage);
+⏱️ *Tiempo activo:* ${uptime} minutos
+📨 *Mensajes recibidos:* ${stats.mensajes_recibidos}
+🚫 *Mensajes filtrados:* ${stats.mensajes_filtrados}
+✅ *Respuestas exitosas:* ${stats.respuestas_exitosas}
+🔄 *Respuestas con reintento:* ${stats.respuestas_reintento}
+⏰ *Timeouts primer intento:* ${stats.timeouts_primer_intento}
+🚨 *Timeouts totales:* ${stats.timeouts_totales}
+👥 *Usuarios nuevos:* ${stats.usuarios_nuevos}
+❌ *Errores:* ${stats.errores}
+🛑 *Runs cancelados:* ${stats.runs_cancelados}
+⚡ *Tiempo promedio:* ${promedioTiempo}s
+
+🧵 *Threads activos:* ${chatThreads.size}
+🏃 *Runs activos:* ${activeRuns.size}
+👤 *Modo humano:* ${humanModeUsers.size} usuarios`;
+
+  await message.reply(statsText);
 }
 
 async function enviarStatus(message) {
-  const statusMessage = `🟢 *Estado del Bot: ACTIVO*\n\nEl bot está en línea y funcionando correctamente.`;
-  await message.reply(statusMessage);
+  const runsActivos = Array.from(activeRuns.entries()).map(([runId, info]) => {
+    const tiempo = Math.floor((Date.now() - info.inicio) / 1000);
+    return `• ${runId.substring(0, 8)}... (${tiempo}s)`;
+  }).join('\n');
+  
+  const statusText = `🔍 *ESTADO DEL SISTEMA*
+
+🏃 *Runs activos (${activeRuns.size}):*
+${runsActivos || "Ninguno"}
+
+🧵 *Threads:* ${chatThreads.size}
+👤 *Modo humano:* ${humanModeUsers.size}
+📝 *Mensajes pendientes:* ${pendingMessages.size}
+🔒 *Locks activos:* ${threadLocks.size}
+
+💾 *Memoria:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
+
+  await message.reply(statusText);
 }
 
 async function enviarAyuda(message) {
-  const helpMessage = `📚 *Comandos Disponibles*\n\n• *!stats*: Muestra estadísticas de uso del bot.\n• *!status*: Muestra el estado actual del bot.\n• *!human*: Activa el modo humano (el bot no responderá a tus mensajes con IA).\n• *!ai*: Desactiva el modo humano (el bot volverá a responder con IA).\n• *!cleanup*: Cancela todos los runs de OpenAI activos y limpia el estado interno.\n\n_Estos comandos son solo para administradores._`;
-  await message.reply(helpMessage);
+  const helpText = `🆘 *COMANDOS ADMINISTRATIVOS*
+
+📊 \`!stats\` - Estadísticas del bot
+🔍 \`!status\` - Estado actual del sistema
+🧹 \`!cleanup\` - Limpiar runs activos
+👤 \`!human\` - Activar modo humano (sin IA)
+🤖 \`!ai\` - Activar modo IA
+❓ \`!help\` - Mostrar esta ayuda
+
+*Nota:* Los comandos admin solo funcionan en chats privados.`;
+
+  await message.reply(helpText);
+}
+
+async function limpiarRunsGlobales(message) {
+  try {
+    const runsALimpiar = activeRuns.size;
+    
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      try {
+        await openai.beta.threads.runs.cancel(runInfo.threadId, runId);
+        console.log(`🧹 [CLEANUP-GLOBAL] Run cancelado: ${runId}`);
+      } catch (error) {
+        console.log(`⚠️ [CLEANUP-GLOBAL] Error cancelando ${runId}: ${error.message}`);
+      }
+    }
+    
+    activeRuns.clear();
+    stats.runs_cancelados += runsALimpiar;
+    
+    await message.reply(`🧹 *Limpieza completada*\n${runsALimpiar} runs cancelados y limpiados.`);
+    
+  } catch (error) {
+    console.error("❌ [ERROR-CLEANUP-GLOBAL]", error);
+    await message.reply("❌ Error durante la limpieza global");
+  }
 }
 
 // ----------------------------------------------------
-// 9. Manejador Principal de Mensajes
+// 9. Procesamiento Principal de Mensajes
 // ----------------------------------------------------
 
-client.on("message", async (message) => {
+async function procesarMensaje(message) {
+  const startTime = Date.now();
   stats.mensajes_recibidos++;
-
-  // --- INICIO: Lógica para procesar mensajes de voz con OpenAI Whisper ---
-  if (message.hasMedia && message.type === 'audio') {
-    console.log(`🎤 [AUDIO] Mensaje de audio recibido de ${message.from}. Procesando con OpenAI Whisper...`);
-    const media = await message.downloadMedia();
-    if (!media || !media.data) {
-        console.log(`⚠️ [AUDIO] No se pudo descargar el audio de ${message.from}.`);
-        return;
-    }
-
-    // WhatsApp envía audios en formato .ogg, que Whisper soporta.
-    const filePath = path.join(TEMP_AUDIO_DIR, `${message.id.id}.ogg`);
-    try {
-        await fs.writeFile(filePath, Buffer.from(media.data, 'base64'));
-        
-        // Usamos la instancia 'openai' ya creada y la pasamos a la función
-        const transcribedText = await speechToText(openai, filePath);
-        
-        if (transcribedText && transcribedText.trim().length > 0) {
-            console.log(`📝 [WHISPER] Transcripción de ${message.from}: "${transcribedText}"`);
-            message.body = transcribedText; // Sobrescribimos el cuerpo del mensaje con el texto transcrito
-        } else {
-            console.log(`🔇 [AUDIO] Transcripción vacía o fallida para ${message.from}.`);
-            await message.reply("🤖 No pude entender lo que dijiste en el audio. ¿Puedes intentarlo de nuevo o escribirlo?");
-            return; // Detenemos el procesamiento si la transcripción está vacía
-        }
-    } catch (error) {
-        console.error("❌ [ERROR-SPEECH-TO-TEXT]", error);
-        stats.errores++;
-        await message.reply("🤖 Hubo un problema al procesar tu mensaje de voz. Por favor, inténtalo más tarde.");
-        return; // Detenemos el procesamiento en caso de error
-    } finally {
-        // Limpiar el archivo de audio temporal
-        await fs.unlink(filePath).catch(err => console.error(`❌ [ERROR-CLEANUP] No se pudo eliminar el archivo temporal: ${filePath}`, err));
-    }
-  }
-  // --- FIN: Lógica para procesar mensajes de voz ---
-
-  if (debeIgnorarMensaje(message)) {
-    return;
-  }
-
-  const chatId = message.from;
-  const body = message.body;
-
-  if (body.startsWith("!")) {
-    await manejarComandoAdmin(message);
-    return;
-  }
-
-  if (humanModeUsers.has(chatId)) {
-    console.log(`👤 [HUMAN-MODE] Mensaje de ${chatId} ignorado (modo humano activo).`);
-    return;
-  }
-
+  
   try {
-    // Adquirir bloqueo para el thread
-    if (threadLocks.has(chatId)) {
-      pendingMessages.set(chatId, (pendingMessages.get(chatId) || []).concat(message));
-      console.log(`⏳ [LOCK] Mensaje de ${chatId} en cola. Thread bloqueado.`);
+    if (debeIgnorarMensaje(message)) {
       return;
     }
-    threadLocks.set(chatId, true);
-
-    let threadId = await obtenerOCrearThread(chatId);
-    threadId = await limpiarContextoSiNecesario(threadId);
-
-    const respuestaBruta = await procesarConAssistant(message, threadId);
-    const respuestaLimpia = limpiarRespuestaAsistente(respuestaBruta);
-    await message.reply(respuestaLimpia);
-    stats.respuestas_exitosas++;
-
-  } catch (error) {
-    console.error("❌ [ERROR-GENERAL]", error);
-    stats.errores++;
-    let errorMessage = "⚠️ Lo siento, hubo un error al procesar tu solicitud. Por favor, intenta de nuevo más tarde.";
-    if (error.message.includes("TIMEOUT")) {
-      errorMessage = "⏳ Tu solicitud tardó demasiado en ser procesada. Por favor, intenta de nuevo o reformula tu pregunta.";
-      stats.timeouts_totales++;
+    
+    const chatId = message.from;
+    const body = message.body?.trim() || "";
+    
+    if (esComandoAdmin(body)) {
+      await manejarComandoAdmin(message);
+      return;
     }
-    await message.reply(errorMessage);
-  } finally {
-    // Liberar bloqueo del thread
-    threadLocks.delete(chatId);
-    // Procesar mensajes pendientes
+    
+    if (humanModeUsers.has(chatId)) {
+      console.log(`👤 [HUMAN-MODE] Mensaje ignorado de ${chatId} (modo humano activo)`);
+      return;
+    }
+    
+    // Verificar si hay un mensaje pendiente para este chat
     if (pendingMessages.has(chatId)) {
-      const queuedMessages = pendingMessages.get(chatId);
-      pendingMessages.delete(chatId);
-      console.log(`🔄 [LOCK] Procesando ${queuedMessages.length} mensajes en cola para ${chatId}.`);
-      for (const msg of queuedMessages) {
-        await client.emit("message", msg); // Re-emitir para procesar
+      console.log(`⏳ [PENDING] Mensaje en cola para ${chatId}, ignorando duplicado`);
+      return;
+    }
+    
+    // Verificar si el thread está bloqueado
+    if (threadLocks.has(chatId)) {
+      console.log(`🔒 [LOCKED] Thread bloqueado para ${chatId}, ignorando mensaje`);
+      return;
+    }
+    
+    // Marcar mensaje como pendiente y bloquear thread
+    pendingMessages.set(chatId, { message, timestamp: Date.now() });
+    threadLocks.set(chatId, Date.now());
+    
+    try {
+      console.log(`📨 [PROCESANDO] Mensaje de ${chatId}: "${body.substring(0, 100)}..."`);
+      
+      const threadId = await obtenerOCrearThread(chatId);
+      const threadLimpio = await limpiarContextoSiNecesario(threadId);
+      
+      let respuesta;
+      let intentos = 0;
+      const maxIntentos = CONFIG.MAX_REINTENTOS;
+      
+      while (intentos < maxIntentos) {
+        try {
+          const timeout = intentos === 0 ? CONFIG.TIMEOUT_PRINCIPAL : CONFIG.TIMEOUT_REINTENTO;
+          respuesta = await procesarConAssistant(message, threadLimpio, timeout * 1000);
+          
+          if (intentos > 0) {
+            stats.respuestas_reintento++;
+          }
+          break;
+          
+        } catch (error) {
+          intentos++;
+          
+          if (error.message.includes("TIMEOUT")) {
+            if (intentos === 1) {
+              stats.timeouts_primer_intento++;
+            }
+            stats.timeouts_totales++;
+            
+            console.log(`⏰ [TIMEOUT] Intento ${intentos}/${maxIntentos} para ${chatId}`);
+            
+            if (intentos < maxIntentos) {
+              console.log(`🔄 [REINTENTO] Esperando antes del siguiente intento...`);
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              continue;
+            }
+          }
+          
+          throw error;
+        }
+      }
+      
+      if (!respuesta) {
+        throw new Error("No se pudo obtener respuesta después de todos los intentos");
+      }
+      
+      // Limpiar respuesta antes de enviar
+      const respuestaLimpia = limpiarRespuestaAsistente(respuesta);
+      
+      await message.reply(respuestaLimpia);
+      stats.respuestas_exitosas++;
+      
+      const tiempoTotal = Date.now() - startTime;
+      console.log(`✅ [ÉXITO] Respuesta enviada a ${chatId} en ${formatearTiempo(tiempoTotal)}s`);
+      
+    } catch (error) {
+      stats.errores++;
+      console.error(`❌ [ERROR-PROCESAMIENTO] ${chatId}:`, error);
+      
+      const mensajeError = error.message.includes("TIMEOUT") 
+        ? "⏰ El asistente está experimentando alta demanda. Por favor, intenta nuevamente en unos momentos."
+        : "❌ Ocurrió un error al procesar tu mensaje. Por favor, intenta nuevamente.";
+      
+      try {
+        await message.reply(mensajeError);
+      } catch (replyError) {
+        console.error("❌ [ERROR-REPLY]", replyError);
+      }
+      
+      // Limpiar runs problemáticos
+      const threadId = chatThreads.get(chatId);
+      if (threadId) {
+        await limpiarRunsDelThread(threadId);
+      }
+    }
+    
+  } catch (error) {
+    stats.errores++;
+    console.error("❌ [ERROR-GENERAL]", error);
+  } finally {
+    // Limpiar estado del chat
+    const chatId = message.from;
+    pendingMessages.delete(chatId);
+    threadLocks.delete(chatId);
+  }
+}
+
+// ----------------------------------------------------
+// 10. Manejo de Mensajes de Audio
+// ----------------------------------------------------
+
+async function procesarAudio(message) {
+  let tempFilePath = null;
+  
+  try {
+    console.log(`🎵 [AUDIO] Procesando mensaje de audio de ${message.from}`);
+    
+    const media = await message.downloadMedia();
+    if (!media || !media.data) {
+      throw new Error("No se pudo descargar el archivo de audio");
+    }
+    
+    // Crear nombre único para el archivo temporal
+    const timestamp = Date.now();
+    const fileName = `audio_${timestamp}.ogg`;
+    tempFilePath = path.join(TEMP_AUDIO_DIR, fileName);
+    
+    // Guardar el archivo de audio
+    await fs.writeFile(tempFilePath, media.data, 'base64');
+    console.log(`💾 [AUDIO] Archivo guardado temporalmente: ${tempFilePath}`);
+    
+    // Transcribir el audio
+    const textoTranscrito = await speechToText(tempFilePath);
+    
+    if (!textoTranscrito || textoTranscrito.trim().length === 0) {
+      await message.reply("🎵 No pude entender el audio. Por favor, intenta enviar un mensaje de texto o un audio más claro.");
+      return;
+    }
+    
+    console.log(`📝 [AUDIO] Texto transcrito: "${textoTranscrito}"`);
+    
+    // Crear un mensaje simulado con el texto transcrito
+    const mensajeSimulado = {
+      ...message,
+      body: textoTranscrito,
+      hasMedia: false
+    };
+    
+    // Procesar como mensaje de texto normal
+    await procesarMensaje(mensajeSimulado);
+    
+  } catch (error) {
+    console.error("❌ [ERROR-AUDIO]", error);
+    await message.reply("❌ Ocurrió un error al procesar el audio. Por favor, intenta enviar un mensaje de texto.");
+  } finally {
+    // Limpiar archivo temporal
+    if (tempFilePath) {
+      try {
+        await fs.unlink(tempFilePath);
+        console.log(`🗑️ [AUDIO] Archivo temporal eliminado: ${tempFilePath}`);
+      } catch (cleanupError) {
+        console.error("⚠️ [AUDIO-CLEANUP]", cleanupError);
       }
     }
   }
-});
-
-// ----------------------------------------------------
-// 10. Eventos del Cliente WhatsApp
-// ----------------------------------------------------
-
-client.on("qr", (qr) => {
-  console.log("🔵 Evento QR recibido. Contenido del QR:", qr);
-  qrcode.generate(qr, { small: true });
-  console.log("🔹 Escanea este QR para iniciar sesión (o re-iniciar si la sesión se perdió).");
-});
-
-client.on("ready", () => {
-  console.log("🚀 Evento 'ready' de client disparado. Bot listo y conectado.");
-});
-
-client.on("authenticated", () => {
-  console.log("✅ Cliente AUTENTICADO");
-});
-
-client.on("disconnected", (reason) => {
-  console.log("❌ Cliente DESCONECTADO:", reason);
-});
-
-client.on("auth_failure", (msg) => {
-  console.error("❌ FALLO DE AUTENTICACIÓN:", msg);
-});
+}
 
 // ----------------------------------------------------
 // 11. Inicialización y Health Check
@@ -705,11 +800,29 @@ client.on("auth_failure", (msg) => {
 
 async function setupDirectories() {
   try {
-    await fs.mkdir(TEMP_AUDIO_DIR, { recursive: true });
-    console.log(`✅ [SETUP] Directorio temporal de audio listo en: ${TEMP_AUDIO_DIR}`);
+    // Verificar si el directorio existe antes de intentar crearlo
+    try {
+      await fs.access(TEMP_AUDIO_DIR);
+      console.log(`✅ [SETUP] Directorio temporal de audio ya existe: ${TEMP_AUDIO_DIR}`);
+    } catch (accessError) {
+      // El directorio no existe, intentar crearlo
+      await fs.mkdir(TEMP_AUDIO_DIR, { recursive: true });
+      console.log(`✅ [SETUP] Directorio temporal de audio creado: ${TEMP_AUDIO_DIR}`);
+    }
   } catch (error) {
     console.error(`❌ [CRÍTICO] No se pudo crear el directorio temporal de audio: ${TEMP_AUDIO_DIR}`, error);
-    process.exit(1);
+    // En lugar de salir, intentar usar un directorio temporal del sistema
+    try {
+      const os = require('os');
+      const tempDir = path.join(os.tmpdir(), 'whatsapp_bot_audio');
+      await fs.mkdir(tempDir, { recursive: true });
+      // Actualizar la variable global
+      global.TEMP_AUDIO_DIR = tempDir;
+      console.log(`⚠️ [FALLBACK] Usando directorio temporal del sistema: ${tempDir}`);
+    } catch (fallbackError) {
+      console.error(`❌ [CRÍTICO] No se pudo crear directorio de fallback:`, fallbackError);
+      process.exit(1);
+    }
   }
 }
 
@@ -718,14 +831,203 @@ setupDirectories(); // Asegurarse de que el directorio exista al iniciar
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  const uptime = obtenerUptime();
+  res.json({
+    status: "Bot WhatsApp Municipalidad San Martín",
+    uptime: `${uptime} minutos`,
+    stats: {
+      mensajes_recibidos: stats.mensajes_recibidos,
+      respuestas_exitosas: stats.respuestas_exitosas,
+      errores: stats.errores,
+      threads_activos: chatThreads.size,
+      runs_activos: activeRuns.size
+    },
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get("/health", (req, res) => {
-  res.status(200).send("OK");
+  res.json({ 
+    status: "healthy", 
+    timestamp: new Date().toISOString(),
+    uptime: obtenerUptime()
+  });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🌐 Servidor de Health Check escuchando en el puerto ${PORT}`);
+// ----------------------------------------------------
+// 12. Event Handlers del Cliente WhatsApp
+// ----------------------------------------------------
+
+client.on("qr", (qr) => {
+  console.log("🔗 [QR] Código QR generado:");
+  qrcode.generate(qr, { small: true });
 });
 
-console.log("🚀 Inicializando cliente de WhatsApp...");
+client.on("ready", () => {
+  console.log("✅ [WHATSAPP] Cliente conectado y listo");
+  console.log(`🤖 [BOT] Asistente IA activo - Municipalidad San Martín`);
+  console.log(`🌐 [SERVER] Servidor health check en puerto ${PORT}`);
+});
+
+client.on("authenticated", () => {
+  console.log("🔐 [AUTH] Cliente autenticado correctamente");
+});
+
+client.on("auth_failure", (msg) => {
+  console.error("❌ [AUTH-FAIL] Fallo en autenticación:", msg);
+});
+
+client.on("disconnected", (reason) => {
+  console.log("🔌 [DISCONNECT] Cliente desconectado:", reason);
+});
+
+client.on("message_create", async (message) => {
+  try {
+    // Verificar si el mensaje tiene audio
+    if (message.hasMedia && message.type === 'ptt') {
+      await procesarAudio(message);
+    } else {
+      await procesarMensaje(message);
+    }
+  } catch (error) {
+    console.error("❌ [ERROR-MESSAGE-HANDLER]", error);
+  }
+});
+
+// ----------------------------------------------------
+// 13. Tareas de Mantenimiento
+// ----------------------------------------------------
+
+// Limpieza periódica de runs antiguos
+setInterval(async () => {
+  try {
+    const ahora = Date.now();
+    const runsALimpiar = [];
+    
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      if (ahora - runInfo.inicio > CONFIG.LIMPIEZA_RUNS) {
+        runsALimpiar.push(runId);
+      }
+    }
+    
+    if (runsALimpiar.length > 0) {
+      console.log(`🧹 [MANTENIMIENTO] Limpiando ${runsALimpiar.length} runs antiguos`);
+      
+      for (let runId of runsALimpiar) {
+        const runInfo = activeRuns.get(runId);
+        try {
+          await openai.beta.threads.runs.cancel(runInfo.threadId, runId);
+        } catch (error) {
+          console.log(`⚠️ [MANTENIMIENTO] Error cancelando ${runId}: ${error.message}`);
+        }
+        activeRuns.delete(runId);
+        stats.runs_cancelados++;
+      }
+    }
+  } catch (error) {
+    console.error("❌ [ERROR-MANTENIMIENTO]", error);
+  }
+}, CONFIG.LIMPIEZA_RUNS);
+
+// Optimización periódica
+setInterval(() => {
+  try {
+    // Limpiar mensajes pendientes antiguos
+    const ahora = Date.now();
+    for (let [chatId, info] of pendingMessages.entries()) {
+      if (ahora - info.timestamp > 300000) { // 5 minutos
+        pendingMessages.delete(chatId);
+        threadLocks.delete(chatId);
+        console.log(`🧹 [OPTIMIZACIÓN] Mensaje pendiente limpiado: ${chatId}`);
+      }
+    }
+    
+    // Limpiar locks antiguos
+    for (let [chatId, timestamp] of threadLocks.entries()) {
+      if (ahora - timestamp > 300000) { // 5 minutos
+        threadLocks.delete(chatId);
+        console.log(`🧹 [OPTIMIZACIÓN] Lock limpiado: ${chatId}`);
+      }
+    }
+    
+    // Forzar garbage collection si está disponible
+    if (global.gc) {
+      global.gc();
+      console.log("🗑️ [OPTIMIZACIÓN] Garbage collection ejecutado");
+    }
+    
+  } catch (error) {
+    console.error("❌ [ERROR-OPTIMIZACIÓN]", error);
+  }
+}, CONFIG.OPTIMIZACION);
+
+// Estadísticas periódicas
+setInterval(() => {
+  const uptime = obtenerUptime();
+  const memoryUsage = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  
+  console.log(`📊 [STATS] Uptime: ${uptime}min | Memoria: ${memoryUsage}MB | Threads: ${chatThreads.size} | Runs: ${activeRuns.size} | Mensajes: ${stats.mensajes_recibidos}`);
+}, CONFIG.STATS_INTERVAL);
+
+// ----------------------------------------------------
+// 14. Inicialización Final
+// ----------------------------------------------------
+
+console.log("🚀 [INICIO] Inicializando Bot WhatsApp Municipalidad San Martín...");
+console.log(`⚙️ [CONFIG] Timeouts: Principal=${CONFIG.TIMEOUT_PRINCIPAL}s, Reintento=${CONFIG.TIMEOUT_REINTENTO}s`);
+console.log(`🔄 [CONFIG] Max reintentos: ${CONFIG.MAX_REINTENTOS}`);
+
+// Inicializar cliente WhatsApp
 client.initialize();
-console.log("🚀🚀🚀 Final de la configuración del cliente y handlers. Esperando eventos...");
+
+// Inicializar servidor Express
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🌐 [SERVER] Servidor iniciado en puerto ${PORT}`);
+});
+
+// Manejo de señales del sistema
+process.on('SIGINT', async () => {
+  console.log('🛑 [SHUTDOWN] Recibida señal SIGINT, cerrando aplicación...');
+  
+  try {
+    // Cancelar todos los runs activos
+    for (let [runId, runInfo] of activeRuns.entries()) {
+      try {
+        await openai.beta.threads.runs.cancel(runInfo.threadId, runId);
+      } catch (error) {
+        console.log(`⚠️ [SHUTDOWN] Error cancelando ${runId}: ${error.message}`);
+      }
+    }
+    
+    // Cerrar cliente WhatsApp
+    await client.destroy();
+    console.log('✅ [SHUTDOWN] Cliente WhatsApp cerrado correctamente');
+    
+  } catch (error) {
+    console.error('❌ [SHUTDOWN] Error durante el cierre:', error);
+  }
+  
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('🛑 [SHUTDOWN] Recibida señal SIGTERM, cerrando aplicación...');
+  process.exit(0);
+});
+
+// Manejo de errores no capturados
+process.on('uncaughtException', (error) => {
+  console.error('❌ [UNCAUGHT-EXCEPTION]', error);
+  stats.errores++;
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ [UNHANDLED-REJECTION]', reason);
+  stats.errores++;
+});
+
+console.log("✅ [READY] Bot WhatsApp Municipalidad San Martín iniciado correctamente");
+
