@@ -1,10 +1,11 @@
 #!/bin/sh
 set -e
 
-# Load environment variables from .env if provided
+# Robustecemos la lectura de variables desde /app/.env si existe
 if [ -f /app/.env ]; then
-  # Export variables while ignoring comments and blank lines
-  export $(grep -v '^#' /app/.env | xargs) || true
+  set -o allexport
+  . /app/.env
+  set +o allexport
 fi
 
 # Ensure session directories exist with correct permissions

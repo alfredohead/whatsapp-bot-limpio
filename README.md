@@ -8,7 +8,7 @@ Este proyecto tiene:
 
 1. Ejecutá `npm install`
 
-2. Configurá tus variables de entorno `OPENAI_API_KEY` y `OPENAI_ASSISTANT_ID` (puedes usar Fly.io secrets o un archivo `.env`)
+2. Configurá las variables de entorno `OPENAI_API_KEY`, `OPENAI_ASSISTANT_ID` y `OPENWEATHER_KEY`. Podés copiarlas desde el archivo `.env.example` y completarlas o definirlas como secretos en Fly.io.
 
 3. Corré `node index.js` para probarlo localmente
 
