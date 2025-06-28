@@ -46,15 +46,18 @@ async function speechToText(audioFile) {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
+
 'Content-Type': 'audio/mpeg'
     },
     body: stream
   });
 
+
 if (!res.ok) {
   const errorBody = await res.text();
   throw new Error(`Wit.ai error ${res.status}: ${errorBody}`);
 }
+
   const data = await res.json();
   return data.text || '';
 }
