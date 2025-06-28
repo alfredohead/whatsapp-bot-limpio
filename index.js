@@ -492,6 +492,10 @@ async function manejarComandoAdmin(message) {
       case body.startsWith("!status"):
         await enviarStatus(message);
         break;
+
+      case body.startsWith("!uptime"):
+        await enviarUptime(message);
+        break;
         
       case body.startsWith("!help"):
         await enviarAyuda(message);
@@ -568,11 +572,18 @@ ${runsActivos || "Ninguno"}
   await message.reply(statusText);
 }
 
+async function enviarUptime(message) {
+  const uptime = obtenerUptime();
+  const memory = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+  await message.reply(`⏱️ *Uptime:* ${uptime} minutos\n💾 *Memoria:* ${memory}MB`);
+}
+
 async function enviarAyuda(message) {
   const helpText = `🆘 *COMANDOS ADMINISTRATIVOS*
 
 📊 \`!stats\` - Estadísticas del bot
 🔍 \`!status\` - Estado actual del sistema
+⏱️ \`!uptime\` - Mostrar tiempo activo
 🧹 \`!cleanup\` - Limpiar runs activos
 👤 \`!human\` - Activar modo humano (sin IA)
 🤖 \`!ai\` - Activar modo IA
@@ -852,10 +863,34 @@ app.get("/", (req, res) => {
 });
 
 app.get("/health", (req, res) => {
-  res.json({ 
-    status: "healthy", 
+  res.json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
     uptime: obtenerUptime()
+  });
+});
+
+app.get("/stats", (req, res) => {
+  const uptime = obtenerUptime();
+  const promedioTiempo = stats.tiempo_promedio.length > 0
+    ? formatearTiempo(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length)
+    : "0.0";
+
+  res.json({
+    uptime,
+    mensajes_recibidos: stats.mensajes_recibidos,
+    mensajes_filtrados: stats.mensajes_filtrados,
+    respuestas_exitosas: stats.respuestas_exitosas,
+    respuestas_reintento: stats.respuestas_reintento,
+    timeouts_primer_intento: stats.timeouts_primer_intento,
+    timeouts_totales: stats.timeouts_totales,
+    usuarios_nuevos: stats.usuarios_nuevos,
+    errores: stats.errores,
+    runs_cancelados: stats.runs_cancelados,
+    tiempo_promedio: promedioTiempo,
+    threads_activos: chatThreads.size,
+    runs_activos: activeRuns.size,
+    modo_humano: humanModeUsers.size
   });
 });
 

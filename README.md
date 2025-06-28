@@ -34,3 +34,8 @@ que se encarga de crear los hilos y manejar las llamadas a herramientas.
 
 Si el contenedor no puede encontrar Chromium automáticamente, define `PUPPETEER_EXECUTABLE_PATH` en tu `.env` apuntando a la ruta del binario.
 
+### Nuevos comandos y endpoints
+
+- `!uptime` muestra el tiempo de actividad y memoria usada.
+- `GET /stats` devuelve las estadísticas del bot en formato JSON.
+
