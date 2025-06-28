@@ -32,9 +32,9 @@ async function textToSpeech(text, lang = 'es', outFile = 'tts-output.mp3') {
 }
 
 /**
- * Transcribe un archivo de audio usando la API de Wit.ai.
- * Requiere la variable de entorno WITAI_TOKEN.
- * @param {string} audioFile Ruta del archivo de audio (wav/mp3).
+ * Transcribe un archivo de audio usando la API de OpenAI (Whisper).
+ * @param {object} openai - Instancia del cliente de OpenAI.
+ * @param {string} audioFile - Ruta del archivo de audio.
  * @returns {Promise<string>} Texto transcripto.
  */
 async function speechToText(audioFile) {

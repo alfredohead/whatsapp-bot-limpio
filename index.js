@@ -1,13 +1,15 @@
 // index.js FINAL DEFINITIVO - Bot WhatsApp Corregido y Depurado
 // Versión estable con gestión mejorada de runs concurrentes
 
-const express = require("express"); // Asegurar que express se importe al inicio
 require("dotenv").config();
+const fs = require("fs").promises; // Para manejo de archivos
+const path = require("path"); // Para manejar rutas de archivos
+const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
-const http = require("http");
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
+const { speechToText } = require("./speech-utils.js");
 
 // ----------------------------------------------------
 // 1. Configuración y Validación
@@ -21,7 +23,7 @@ if (!process.env.OPENWEATHER_API_KEY && OPENWEATHER_KEY) {
 }
 
 if (!OPENAI_API_KEY || !OPENAI_ASSISTANT_ID || !OPENWEATHER_KEY) {
-  console.error("❌ [CRÍTICO] Variables de entorno faltantes. Asegúrate de que OPENAI_API_KEY, OPENAI_ASSISTANT_ID y OPENWEATHER_KEY estén configuradas.");
+  console.error("❌ [CRÍTICO] Variables de entorno faltantes (OPENAI_API_KEY, OPENAI_ASSISTANT_ID, OPENWEATHER_KEY).");
   process.exit(1);
 }
 
@@ -90,6 +92,7 @@ const pendingMessages = new Map();
 const threadLocks = new Map();      
 const usuariosConocidos = new Set();
 
+const TEMP_AUDIO_DIR = path.join(__dirname, 'temp_audio'); // Directorio para audios temporales
 const stats = {
   mensajes_recibidos: 0,
   mensajes_filtrados: 0,
@@ -118,6 +121,19 @@ function formatearTiempo(ms) {
 
 function obtenerUptime() {
   return Math.floor((Date.now() - stats.inicio) / 1000 / 60);
+}
+
+/**
+ * Limpia el texto de respuesta del asistente, eliminando artefactos no deseados
+ * como las citaciones de archivos (ej: 【1:0†source.pdf】), pero conservando
+ * el formato de WhatsApp (negritas, itálicas) y los emojis.
+ * @param {string} texto El texto a limpiar.
+ * @returns {string} El texto limpio.
+ */
+function limpiarRespuestaAsistente(texto) {
+  if (typeof texto !== 'string') return texto;
+  // Elimina las citaciones que OpenAI a veces agrega, como 【...】
+  return texto.replace(/【.*?】/g, '').trim();
 }
 
 // ----------------------------------------------------
@@ -562,6 +578,43 @@ async function enviarAyuda(message) {
 client.on("message", async (message) => {
   stats.mensajes_recibidos++;
 
+  // --- INICIO: Lógica para procesar mensajes de voz con OpenAI Whisper ---
+  if (message.hasMedia && message.type === 'audio') {
+    console.log(`🎤 [AUDIO] Mensaje de audio recibido de ${message.from}. Procesando con OpenAI Whisper...`);
+    const media = await message.downloadMedia();
+    if (!media || !media.data) {
+        console.log(`⚠️ [AUDIO] No se pudo descargar el audio de ${message.from}.`);
+        return;
+    }
+
+    // WhatsApp envía audios en formato .ogg, que Whisper soporta.
+    const filePath = path.join(TEMP_AUDIO_DIR, `${message.id.id}.ogg`);
+    try {
+        await fs.writeFile(filePath, Buffer.from(media.data, 'base64'));
+        
+        // Usamos la instancia 'openai' ya creada y la pasamos a la función
+        const transcribedText = await speechToText(openai, filePath);
+        
+        if (transcribedText && transcribedText.trim().length > 0) {
+            console.log(`📝 [WHISPER] Transcripción de ${message.from}: "${transcribedText}"`);
+            message.body = transcribedText; // Sobrescribimos el cuerpo del mensaje con el texto transcrito
+        } else {
+            console.log(`🔇 [AUDIO] Transcripción vacía o fallida para ${message.from}.`);
+            await message.reply("🤖 No pude entender lo que dijiste en el audio. ¿Puedes intentarlo de nuevo o escribirlo?");
+            return; // Detenemos el procesamiento si la transcripción está vacía
+        }
+    } catch (error) {
+        console.error("❌ [ERROR-SPEECH-TO-TEXT]", error);
+        stats.errores++;
+        await message.reply("🤖 Hubo un problema al procesar tu mensaje de voz. Por favor, inténtalo más tarde.");
+        return; // Detenemos el procesamiento en caso de error
+    } finally {
+        // Limpiar el archivo de audio temporal
+        await fs.unlink(filePath).catch(err => console.error(`❌ [ERROR-CLEANUP] No se pudo eliminar el archivo temporal: ${filePath}`, err));
+    }
+  }
+  // --- FIN: Lógica para procesar mensajes de voz ---
+
   if (debeIgnorarMensaje(message)) {
     return;
   }
@@ -591,8 +644,9 @@ client.on("message", async (message) => {
     let threadId = await obtenerOCrearThread(chatId);
     threadId = await limpiarContextoSiNecesario(threadId);
 
-    const assistantResponse = await procesarConAssistant(message, threadId);
-    await message.reply(assistantResponse);
+    const respuestaBruta = await procesarConAssistant(message, threadId);
+    const respuestaLimpia = limpiarRespuestaAsistente(respuestaBruta);
+    await message.reply(respuestaLimpia);
     stats.respuestas_exitosas++;
 
   } catch (error) {
@@ -649,6 +703,18 @@ client.on("auth_failure", (msg) => {
 // 11. Inicialización y Health Check
 // ----------------------------------------------------
 
+async function setupDirectories() {
+  try {
+    await fs.mkdir(TEMP_AUDIO_DIR, { recursive: true });
+    console.log(`✅ [SETUP] Directorio temporal de audio listo en: ${TEMP_AUDIO_DIR}`);
+  } catch (error) {
+    console.error(`❌ [CRÍTICO] No se pudo crear el directorio temporal de audio: ${TEMP_AUDIO_DIR}`, error);
+    process.exit(1);
+  }
+}
+
+setupDirectories(); // Asegurarse de que el directorio exista al iniciar
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -662,7 +728,4 @@ app.listen(PORT, "0.0.0.0", () => {
 
 console.log("🚀 Inicializando cliente de WhatsApp...");
 client.initialize();
-console.log("🚀 Cliente de WhatsApp inicializado.");
 console.log("🚀🚀🚀 Final de la configuración del cliente y handlers. Esperando eventos...");
-
-
