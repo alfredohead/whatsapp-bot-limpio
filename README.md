@@ -26,3 +26,25 @@ El bot mantiene la sesión de WhatsApp usando volúmenes persistentes y responde
 
 La lógica de interacción con la API de OpenAI se encuentra en `openaiAssistant.js`,
 que se encarga de crear los hilos y manejar las llamadas a herramientas.
+
+### Módulo de Voz
+
+El proyecto incluye `speech-utils.js` para convertir texto en audio y viceversa sin depender de OpenAI.
+
+1. Instala las dependencias con `npm install` (se usa `gtts` para texto a voz).
+2. Define `WITAI_TOKEN` en tu entorno para usar la transcripción de audio con la API de Wit.ai.
+
+Ejemplo de uso:
+
+```javascript
+const { textToSpeech, speechToText } = require('./speech-utils');
+
+// Texto a audio
+await textToSpeech('Hola mundo', 'es', 'salida.mp3');
+
+// Audio a texto
+const texto = await speechToText('grabacion.mp3');
+console.log(texto);
+```
+
+Este módulo es independiente del bot principal y puede utilizarse de forma separada para manejar voz.
