@@ -51,26 +51,23 @@ COPY --from=dependencies / /
 # Crear un usuario no-root para mayor seguridad
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Establecer la propiedad del directorio de trabajo (/app) al appuser
-RUN chown -R appuser:appuser /app
-
-# Copiar archivos de la aplicación y establecer permisos
 # Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
+# Esto se hace primero para aprovechar el cache de Docker y acelerar builds futuros.
 COPY package.json package-lock.json ./
 
-# Usamos 'npm install' como alternativa a 'npm ci'. Aunque 'ci' es preferible para builds
-# reproducibles, 'install' es más flexible si 'package-lock.json' no se encuentra
-# en el contexto de build (posiblemente por un archivo .dockerignore).
-# --omit=dev asegura que solo se instalen las dependencias de producción.
+# Instalar dependencias de producción.
 RUN npm install --omit=dev
 
-COPY --chown=appuser:appuser . .
+# Copiar el resto del código de la aplicación
+COPY . .
 
-# El volumen se montará en /app/session. Nos aseguramos de que el directorio exista
-# y que el usuario 'appuser' tenga permisos sobre él.
-# También creamos el directorio para audios temporales y le damos permisos.
-RUN mkdir -p /app/session /app/temp_audio && \
-    chown -R appuser:appuser /app/session /app/temp_audio
+# Crear directorios necesarios ANTES de cambiar los permisos
+RUN mkdir -p /app/session /app/temp_audio
+
+# Cambiar la propiedad de TODOS los archivos de la aplicación al usuario no-root.
+# Esto se hace al final para asegurar que todo (código, node_modules, carpetas)
+# tenga el dueño correcto.
+RUN chown -R appuser:appuser /app
 
 # Cambiar al usuario no-root
 USER appuser
