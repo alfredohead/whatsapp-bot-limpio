@@ -46,7 +46,7 @@ async function speechToText(audioFile) {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'audio/mpeg3'
+'Content-Type': 'audio/mpeg'
     },
     body: stream
   });
