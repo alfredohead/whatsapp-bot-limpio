@@ -1,5 +1,8 @@
 const fs = require('fs');
-const gTTS = require('gtts');
+const { pipeline } = require('stream');
+const { promisify } = require('util');
+
+const streamPipeline = promisify(pipeline);
 
 /**
  * Convierte texto en un archivo de audio usando Google TTS.
@@ -8,14 +11,24 @@ const gTTS = require('gtts');
  * @param {string} outFile Ruta del archivo mp3 de salida.
  * @returns {Promise<string>} Ruta generada.
  */
-function textToSpeech(text, lang = 'es', outFile = 'tts-output.mp3') {
-  return new Promise((resolve, reject) => {
-    const tts = new gTTS(text, lang);
-    tts.save(outFile, err => {
-      if (err) return reject(err);
-      resolve(outFile);
-    });
+async function textToSpeech(text, lang = 'es', outFile = 'tts-output.mp3') {
+  const query = new URLSearchParams({
+    ie: 'UTF-8',
+    q: text,
+    tl: lang,
+    client: 'tw-ob'
   });
+
+  const res = await fetch(`https://translate.google.com/translate_tts?${query.toString()}`, {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
+
+  if (!res.ok) {
+    throw new Error(`TTS request failed: ${res.status}`);
+  }
+
+  await streamPipeline(res.body, fs.createWriteStream(outFile));
+  return outFile;
 }
 
 /**

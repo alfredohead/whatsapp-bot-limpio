@@ -31,7 +31,7 @@ que se encarga de crear los hilos y manejar las llamadas a herramientas.
 
 El proyecto incluye `speech-utils.js` para convertir texto en audio y viceversa sin depender de OpenAI.
 
-1. Instala las dependencias con `npm install` (se usa `gtts` para texto a voz).
+1. Ejecuta `npm install` para instalar las dependencias.
 2. Define `WITAI_TOKEN` en tu entorno para usar la transcripción de audio con la API de Wit.ai.
 
 Ejemplo de uso:
