@@ -51,9 +51,10 @@ async function speechToText(audioFile) {
     body: stream
   });
 
-  if (!res.ok) {
-    throw new Error(`Wit.ai error ${res.status}`);
-  }
+if (!res.ok) {
+  const errorBody = await res.text();
+  throw new Error(`Wit.ai error ${res.status}: ${errorBody}`);
+}
   const data = await res.json();
   return data.text || '';
 }
