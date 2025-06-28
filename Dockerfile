@@ -61,17 +61,18 @@ RUN npm install --omit=dev
 # Copiar el resto del código de la aplicación
 COPY . .
 
-# Crear directorios necesarios con permisos explícitos
-RUN mkdir -p /app/session /app/temp_audio && \
-    chmod 755 /app/session /app/temp_audio
 
-# Cambiar la propiedad de TODOS los archivos de la aplicación al usuario no-root.
-# Esto se hace al final para asegurar que todo (código, node_modules, carpetas)
-# tenga el dueño correcto.
-RUN chown -R appuser:appuser /app
+# Asegura que el script de inicio sea ejecutable
+RUN chmod +x /app/start.sh
 
-# Cambiar al usuario no-root
-USER appuser
+# Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
+EXPOSE 3000
+
+# Ejecuta el contenedor como root para que start.sh pueda ajustar permisos
+USER root
+
+# Comando principal que prepara la sesión y lanza la app como nodeuser
+CMD ["/app/start.sh"]
 
 # Exponer el puerto que Fly.io usará internamente
 EXPOSE 3000
