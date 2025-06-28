@@ -51,23 +51,31 @@ COPY --from=dependencies / /
 # Crear un usuario no-root para mayor seguridad
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Crear directorios de la aplicación y establecer al 'appuser' como propietario
-RUN mkdir -p /app/session /app/temp_audio && chown -R appuser:appuser /app
+# Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
+# Esto se hace primero para aprovechar el cache de Docker y acelerar builds futuros.
+COPY package.json package-lock.json ./
 
-# Cambiar al usuario no-root ANTES de copiar archivos y instalar dependencias
-USER appuser
-
-# Copiar los archivos de dependencias ya como 'appuser'
-COPY --chown=appuser:appuser package.json package-lock.json ./
-
-# Instalar dependencias como el usuario no-root, lo cual es una mejor práctica de seguridad.
+# Instalar dependencias de producción.
 RUN npm install --omit=dev
 
-# Copiar el resto del código de la aplicación como 'appuser'
-COPY --chown=appuser:appuser . .
+# Copiar el resto del código de la aplicación
+COPY . .
+
+# Crear directorios necesarios con permisos explícitos
+RUN mkdir -p /app/session /app/temp_audio && \
+    chmod 755 /app/session /app/temp_audio
+
+# Cambiar la propiedad de TODOS los archivos de la aplicación al usuario no-root.
+# Esto se hace al final para asegurar que todo (código, node_modules, carpetas)
+# tenga el dueño correcto.
+RUN chown -R appuser:appuser /app
+
+# Cambiar al usuario no-root
+USER appuser
 
 # Exponer el puerto que Fly.io usará internamente
 EXPOSE 3000
 
 # Comando para iniciar la aplicación
 CMD ["node", "index.js"]
+
