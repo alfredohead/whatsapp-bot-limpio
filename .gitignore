@@ -1,29 +1,28 @@
-# Node
-node_modules/
+# Dependencies
+/node_modules
+
+# Environment variables - ¡MUY IMPORTANTE!
+# Contiene tus claves de API secretas. NUNCA lo subas a Git.
 .env
-*.env
+
+# Session Data
+# Contiene los archivos de autenticación de WhatsApp.
+# En producción se maneja con volúmenes (como en Fly.io), no debe estar en el repo.
+/session/
+/wwebjs_auth_data/
+
+# Archivos temporales generados por la app
+/temp_audio/
 
 # Logs
-logs/
+logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# OS
+# Archivos de respaldo
+*.bk
+*.bak
+
+# Archivos generados por el sistema operativo
 .DS_Store
 Thumbs.db
-
-# Credentials
-serviceAccount*.json
-gac.json
-
-# Fly.io
-.fly/
-
-# Misc
-*.swp
-
-# Session data
-session/
-wwebjs_session/
