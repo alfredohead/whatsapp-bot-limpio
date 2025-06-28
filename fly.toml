@@ -3,7 +3,7 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'whatsapp-bot-limpio-wispy-haze-7452'
+app = 'whatsapp-bot-limpio'
 primary_region = 'eze'
 
 [build]

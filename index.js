@@ -781,12 +781,14 @@ async function procesarAudio(message) {
     
     console.log(`📝 [AUDIO] Texto transcrito: "${textoTranscrito}"`);
     
-    // Crear un mensaje simulado con el texto transcrito
-    const mensajeSimulado = {
-      ...message,
-      body: textoTranscrito,
-      hasMedia: false
-    };
+    // Crear un mensaje simulado con el texto transcrito.
+    // Es crucial clonar el objeto manteniendo su prototipo para que métodos como .reply() sigan funcionando.
+    const mensajeSimulado = Object.assign(Object.create(Object.getPrototypeOf(message)), message);
+    // La propiedad 'client' no es enumerable y no se copia con Object.assign.
+    // La reasignamos manualmente para que los métodos como .reply() funcionen.
+    mensajeSimulado.client = client;
+    mensajeSimulado.body = textoTranscrito;
+    mensajeSimulado.hasMedia = false; // Se trata como un mensaje de texto
     
     // Procesar como mensaje de texto normal
     await procesarMensaje(mensajeSimulado);
