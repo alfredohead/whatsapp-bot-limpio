@@ -51,6 +51,9 @@ COPY --from=dependencies / /
 # Crear un usuario no-root para mayor seguridad
 RUN useradd --create-home --shell /bin/bash appuser
 
+# Establecer la propiedad del directorio de trabajo (/app) al appuser
+RUN chown -R appuser:appuser /app
+
 # Copiar archivos de la aplicación y establecer permisos
 # Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
 COPY package.json package-lock.json ./
