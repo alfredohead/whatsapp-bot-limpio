@@ -1068,4 +1068,13 @@ process.on('unhandledRejection', (reason, promise) => {
   stats.errores++;
 });
 
+// Exportar funciones clave para el módulo Telegram
+module.exports = {
+  procesarConAssistant,
+  obtenerOCrearThread
+};
+
 console.log("✅ [READY] Bot WhatsApp Municipalidad San Martín iniciado correctamente");
+
+// 🔽 Integración Telegram (sin tocar WhatsApp)
+require('./telegramHandler');

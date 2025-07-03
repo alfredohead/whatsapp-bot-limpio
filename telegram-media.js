@@ -2,7 +2,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { sendToAssistant } = require('./messageHandler');
+const { sendToAssistant } = require('./functions-handler');
 
 async function handleMediaFromTelegram(bot, msg, userId) {
   const chatId = msg.chat.id;
@@ -52,9 +52,9 @@ async function handleMediaFromTelegram(bot, msg, userId) {
     fs.unlinkSync(tempFile);
   } catch (err) {
     console.error('❌ Error procesando media Telegram:', err);
-    await bot.sendMessage(chatId, '❌ No se pudo procesar el archivo.
+    await bot.sendMessage(chatId, `❌ No se pudo procesar el archivo.
 
-— Municipalidad de General San Martín 🏛️');
+— Municipalidad de General San Martín 🏛️`);
   }
 }
 
