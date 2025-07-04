@@ -1,7 +1,14 @@
 // index.js FINAL DEFINITIVO - Bot WhatsApp Corregido y Depurado
 // Versión estable con gestión mejorada de runs concurrentes
 
-require("dotenv").config();
+// Solo carga .env si no estamos en Fly.io (FLY_APP_NAME no está definido)
+if (!process.env.FLY_APP_NAME) {
+  console.log("INFO: [index.js] FLY_APP_NAME no definido, cargando .env");
+  require("dotenv").config();
+} else {
+  console.log("INFO: [index.js] FLY_APP_NAME definido, omitiendo carga de .env");
+}
+
 const fs = require("fs").promises; // Para manejo de archivos
 const path = require("path"); // Para manejar rutas de archivos
 const express = require("express");

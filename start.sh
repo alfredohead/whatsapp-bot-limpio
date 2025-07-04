@@ -2,12 +2,19 @@
 set -e
 
 # Robustecemos la lectura de variables desde /app/.env si existe
-if [ -f /app/.env ]; then
-
+# Solo cargar .env si no estamos en Fly.io (FLY_APP_NAME no está definido)
+if [ -z "$FLY_APP_NAME" ] && [ -f /app/.env ]; then
+  echo "INFO: FLY_APP_NAME no está definido, cargando /app/.env"
   set -o allexport
   . /app/.env
   set +o allexport
-
+else
+  if [ -n "$FLY_APP_NAME" ]; then
+    echo "INFO: FLY_APP_NAME está definido, omitiendo carga de /app/.env para usar secretos de Fly.io."
+  else
+    echo "INFO: /app/.env no encontrado, continuando sin cargar variables de archivo .env."
+  fi
+fi
 
 # Ensure session directories exist with correct permissions
 SESSION_DIR=/app/session/wwebjs_auth_data/session
