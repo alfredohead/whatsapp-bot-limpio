@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for whatsapp-bot-limpio-wispy-haze-7452 on 2025-06-28T09:57:52-03:00
+# fly.toml app configuration file generated for whatsapp-bot-limpio on 2025-07-11T15:15:53-03:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -29,6 +29,6 @@ primary_region = 'eze'
     protocol = 'http'
 
 [[vm]]
-  memory = '2gb'
+  memory = '4gb'
   cpu_kind = 'shared'
   cpus = 2
