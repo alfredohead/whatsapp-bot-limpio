@@ -28,7 +28,7 @@ function getCurrentTime() {
   };
   const horaFormateada = now.toLocaleTimeString('es-AR', optionsTime);
 
-  return `🕒 Son las ${horaFormateada} del ${fechaFormateada}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
+  return `🕒 Son las ${horaFormateada} del ${fechaFormateada}${BOT_SIGNATURE}`;
 }
 
 function getEfemeride() {
