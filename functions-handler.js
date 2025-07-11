@@ -43,8 +43,8 @@ function getEfemeride() {
 
 async function getWeather() {
   const apiKey = process.env.OPENWEATHER_API_KEY;
-  const lat = -33.0819;
-  const lon = -68.4692;
+  const lat = SAN_MARTIN_LAT;
+  const lon = SAN_MARTIN_LON;
 
   try {
     const response = await axios.get('https://api.openweathermap.org/data/2.5/weather', {
