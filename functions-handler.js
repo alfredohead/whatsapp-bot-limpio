@@ -58,8 +58,8 @@ async function getWeather() {
     });
 
     const data = response.data;
-    const temp = data.main.temp;
-    const desc = data.weather[0].description;
+    const temp = data.main?.temp;
+    const desc = data.weather?.[0]?.description;
 
     return `🌤️ En San Martín (Mendoza), la temperatura actual es de ${temp}°C, con ${desc}.\n\n🤖 Asistente IA\nMunicipalidad de General San Martín.`;
 
