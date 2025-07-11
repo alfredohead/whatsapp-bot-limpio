@@ -1084,4 +1084,4 @@ module.exports = {
 console.log("✅ [READY] Bot WhatsApp Municipalidad San Martín iniciado correctamente");
 
 // 🔽 Integración Telegram (sin tocar WhatsApp)
-require('./telegramHandler');
+// require('./telegramHandler');
