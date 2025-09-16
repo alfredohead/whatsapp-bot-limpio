@@ -1,6 +1,5 @@
 // functions-handler.js - Funciones auxiliares para clima y efemérides
 const axios = require('axios');
-const { procesarConAssistant, obtenerOCrearThread } = require('./index');
 const efemerides = require('./efemerides.json');
 
 function getCurrentDate() {
@@ -69,23 +68,8 @@ async function getWeather() {
   }
 }
 
-async function sendToAssistant(userId, text) {
-  try {
-    const message = {
-      from: userId,
-      body: text
-    };
-    const respuesta = await procesarConAssistant(message, await obtenerOCrearThread(userId));
-    return respuesta;
-  } catch (error) {
-    console.error('❌ [ERROR-sendToAssistant]', error);
-    return '❌ Ocurrió un error al procesar tu mensaje. Por favor, intenta nuevamente.';
-  }
-}
-
 module.exports = {
   getEfemeride,
   getWeather,
-  getCurrentTime,
-  sendToAssistant
+  getCurrentTime
 };

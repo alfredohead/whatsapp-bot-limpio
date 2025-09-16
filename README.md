@@ -4,6 +4,8 @@ Este proyecto tiene:
 - Bot de WhatsApp minimalista
 - Integración con OpenAI GPT para respuestas inteligentes
 
+> ℹ️ **Nota:** La integración con Telegram fue suspendida deliberadamente. El foco actual del proyecto es exclusivamente el bot de WhatsApp.
+
 ## Instrucciones
 
 1. Ejecutá `npm install`
