@@ -9,7 +9,8 @@ if (!process.env.FLY_APP_NAME) {
   console.log("INFO: [index.js] FLY_APP_NAME definido, omitiendo carga de .env");
 }
 
-const fs = require("fs").promises; // Para manejo de archivos
+const fs = require("fs");
+const fsPromises = fs.promises; // Para manejo de archivos asíncrono
 const path = require("path"); // Para manejar rutas de archivos
 const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
@@ -17,6 +18,30 @@ const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
 const { speechToText } = require("./speech-utils.js");
+
+// Determinar rutas para sesión y audios temporales que funcionen tanto en Fly.io (/app)
+// como en ejecuciones locales (usa una carpeta relativa al repositorio).
+const hasAppDir = fs.existsSync("/app");
+const sessionPathFromEnv = process.env.WA_SESSION_PATH || process.env.WHATSAPP_SESSION_PATH;
+const TEMP_AUDIO_ENV = process.env.WA_TEMP_AUDIO || process.env.WHATSAPP_TEMP_AUDIO_DIR;
+
+const SESSION_BASE_PATH = path.resolve(
+  sessionPathFromEnv || (hasAppDir ? "/app/session/wwebjs_auth_data" : path.join(__dirname, "session", "wwebjs_auth_data"))
+);
+
+try {
+  fs.mkdirSync(SESSION_BASE_PATH, { recursive: true });
+  console.log(`✅ [SETUP] Directorio de sesión disponible: ${SESSION_BASE_PATH}`);
+} catch (error) {
+  console.error(`❌ [CRÍTICO] No se pudo asegurar el directorio de sesión requerido: ${SESSION_BASE_PATH}`, error);
+  process.exit(1);
+}
+
+let TEMP_AUDIO_DIR = path.resolve(
+  TEMP_AUDIO_ENV || (hasAppDir ? "/app/temp_audio" : path.join(__dirname, "temp_audio"))
+);
+
+global.TEMP_AUDIO_DIR = TEMP_AUDIO_DIR;
 
 // ----------------------------------------------------
 // 1. Configuración y Validación
@@ -82,11 +107,11 @@ const client = new Client({
       "--disable-backgrounding-occluded-windows",
       "--disable-renderer-backgrounding",
       "--memory-pressure-off",
-      `--user-data-dir=/app/session/wwebjs_auth_data` // Asegurar que Puppeteer use el volumen montado
+      `--user-data-dir=${SESSION_BASE_PATH}` // Asegurar que Puppeteer use el directorio de sesión configurado
     ]
   },
   authStrategy: new LocalAuth({
-    dataPath: "/app/session/wwebjs_auth_data" // Ruta absoluta para LocalAuth
+    dataPath: SESSION_BASE_PATH // Ruta absoluta o relativa según entorno
   })
 });
 
@@ -101,7 +126,6 @@ const pendingMessages = new Map();
 const threadLocks = new Map();      
 const usuariosConocidos = new Set();
 
-const TEMP_AUDIO_DIR = path.join(__dirname, 'temp_audio'); // Directorio para audios temporales
 const stats = {
   mensajes_recibidos: 0,
   mensajes_filtrados: 0,
@@ -775,7 +799,7 @@ async function procesarAudio(message) {
     tempFilePath = path.join(TEMP_AUDIO_DIR, fileName);
     
     // Guardar el archivo de audio
-    await fs.writeFile(tempFilePath, media.data, 'base64');
+    await fsPromises.writeFile(tempFilePath, media.data, 'base64');
     console.log(`💾 [AUDIO] Archivo guardado temporalmente: ${tempFilePath}`);
     
     // Transcribir el audio
@@ -807,7 +831,7 @@ async function procesarAudio(message) {
     // Limpiar archivo temporal
     if (tempFilePath) {
       try {
-        await fs.unlink(tempFilePath);
+        await fsPromises.unlink(tempFilePath);
         console.log(`🗑️ [AUDIO] Archivo temporal eliminado: ${tempFilePath}`);
       } catch (cleanupError) {
         console.error("⚠️ [AUDIO-CLEANUP]", cleanupError);
@@ -824,11 +848,11 @@ async function setupDirectories() {
   try {
     // Verificar si el directorio existe antes de intentar crearlo
     try {
-      await fs.access(TEMP_AUDIO_DIR);
+      await fsPromises.access(TEMP_AUDIO_DIR);
       console.log(`✅ [SETUP] Directorio temporal de audio ya existe: ${TEMP_AUDIO_DIR}`);
     } catch (accessError) {
       // El directorio no existe, intentar crearlo
-      await fs.mkdir(TEMP_AUDIO_DIR, { recursive: true });
+      await fsPromises.mkdir(TEMP_AUDIO_DIR, { recursive: true });
       console.log(`✅ [SETUP] Directorio temporal de audio creado: ${TEMP_AUDIO_DIR}`);
     }
   } catch (error) {
@@ -837,8 +861,9 @@ async function setupDirectories() {
     try {
       const os = require('os');
       const tempDir = path.join(os.tmpdir(), 'whatsapp_bot_audio');
-      await fs.mkdir(tempDir, { recursive: true });
-      // Actualizar la variable global
+      await fsPromises.mkdir(tempDir, { recursive: true });
+      // Actualizar la variable global y local
+      TEMP_AUDIO_DIR = tempDir;
       global.TEMP_AUDIO_DIR = tempDir;
       console.log(`⚠️ [FALLBACK] Usando directorio temporal del sistema: ${tempDir}`);
     } catch (fallbackError) {
@@ -930,7 +955,7 @@ client.on("disconnected", (reason) => {
   console.log("🔌 [DISCONNECT] Cliente desconectado:", reason);
 });
 
-client.on("message_create", async (message) => {
+client.on("message", async (message) => {
   try {
     // Verificar si el mensaje tiene audio
     if (message.hasMedia && message.type === 'ptt') {
