@@ -16,19 +16,45 @@ else
   fi
 fi
 
+# Resolve repository directory to support ejecución local fuera de /app
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Ensure session directories exist with correct permissions
-SESSION_DIR=/app/session/wwebjs_auth_data/session
+DEFAULT_LOCAL_SESSION="$SCRIPT_DIR/session/wwebjs_auth_data"
+SESSION_DIR="${WA_SESSION_PATH:-${WHATSAPP_SESSION_PATH:-}}"
+if [ -z "$SESSION_DIR" ]; then
+  if [ -d /app ]; then
+    SESSION_DIR="/app/session/wwebjs_auth_data"
+  else
+    SESSION_DIR="$DEFAULT_LOCAL_SESSION"
+  fi
+fi
+
 mkdir -p "$SESSION_DIR"
+echo "INFO: Directorio de sesión asegurado en $SESSION_DIR"
 
 # Fix permissions in case the volume was mounted with root ownership
-# Use a more specific path to avoid issues with /app itself
-chown -R nodeuser:nodejs /app/session || true
+if id -u nodeuser >/dev/null 2>&1; then
+  chown -R nodeuser:nodejs "$SESSION_DIR" 2>/dev/null || true
+fi
 
 # Ensure temp_audio directory exists and has correct permissions
-TEMP_AUDIO_DIR=/app/temp_audio
+DEFAULT_LOCAL_TEMP="$SCRIPT_DIR/temp_audio"
+TEMP_AUDIO_DIR="${WA_TEMP_AUDIO:-${WHATSAPP_TEMP_AUDIO_DIR:-}}"
+if [ -z "$TEMP_AUDIO_DIR" ]; then
+  if [ -d /app ]; then
+    TEMP_AUDIO_DIR="/app/temp_audio"
+  else
+    TEMP_AUDIO_DIR="$DEFAULT_LOCAL_TEMP"
+  fi
+fi
+
 mkdir -p "$TEMP_AUDIO_DIR"
-chown -R nodeuser:nodejs "$TEMP_AUDIO_DIR" || true
-chmod 755 "$TEMP_AUDIO_DIR"
+echo "INFO: Directorio temporal de audio asegurado en $TEMP_AUDIO_DIR"
+if id -u nodeuser >/dev/null 2>&1; then
+  chown -R nodeuser:nodejs "$TEMP_AUDIO_DIR" 2>/dev/null || true
+fi
+chmod 755 "$TEMP_AUDIO_DIR" || true
 
 # Remove Chromium lock files that may remain from a crashed session
 rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie" "$SESSION_DIR/SingletonSocket"
