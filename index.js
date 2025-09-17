@@ -969,11 +969,15 @@ async function manejarMensajeEntrante(message) {
 }
 
 client.on("message_create", async (message) => {
-  if (message.fromMe) {
-    return;
-  }
+  try {
+    if (message.fromMe) {
+      return;
+    }
 
-  await manejarMensajeEntrante(message);
+    await manejarMensajeEntrante(message);
+  } catch (error) {
+    console.error("❌ [ERROR-MESSAGE-CREATE]", error);
+  }
 });
 
 // ----------------------------------------------------
