@@ -955,9 +955,9 @@ client.on("disconnected", (reason) => {
   console.log("🔌 [DISCONNECT] Cliente desconectado:", reason);
 });
 
-client.on("message", async (message) => {
+async function manejarMensajeEntrante(message) {
   try {
-    // Verificar si el mensaje tiene audio
+    // Verificar si el mensaje contiene un audio (nota de voz)
     if (message.hasMedia && message.type === 'ptt') {
       await procesarAudio(message);
     } else {
@@ -966,6 +966,14 @@ client.on("message", async (message) => {
   } catch (error) {
     console.error("❌ [ERROR-MESSAGE-HANDLER]", error);
   }
+}
+
+client.on("message_create", async (message) => {
+  if (message.fromMe) {
+    return;
+  }
+
+  await manejarMensajeEntrante(message);
 });
 
 // ----------------------------------------------------
