@@ -35,7 +35,7 @@ echo "INFO: Directorio de sesión asegurado en $SESSION_DIR"
 
 # Fix permissions in case the volume was mounted with root ownership
 if id -u nodeuser >/dev/null 2>&1; then
-  chown -R nodeuser:nodeuser "$SESSION_DIR" 2>/dev/null || true
+  chown -R nodeuser:nodeuser /app/session 2>/dev/null || true
 fi
 
 # Ensure temp_audio directory exists and has correct permissions
