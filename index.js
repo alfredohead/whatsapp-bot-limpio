@@ -16,7 +16,7 @@ const express = require("express");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
-const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler");
+const { getWeather, getEfemeride, getCurrentTime } = require("./functions-handler.js");
 const { speechToText } = require("./speech-utils.js");
 
 // Determinar rutas para sesión y audios temporales que funcionen tanto en Fly.io (/app)
@@ -118,13 +118,23 @@ const client = new Client({
 // ----------------------------------------------------
 // 3. Variables Globales
 // ----------------------------------------------------
-const chatThreads = new Map();      
-const humanModeUsers = new Set();   
-const userFaileds = new Map();      
-const activeRuns = new Map();       
-const pendingMessages = new Map();  
-const threadLocks = new Map();      
+const chatThreads = new Map();
+const humanModeUsers = new Set();
+const userFaileds = new Map();
+const activeRuns = new Map();
+const pendingMessages = new Map();
+const threadLocks = new Map();
 const usuariosConocidos = new Set();
+
+// Limpieza inicial de estados al arrancar
+function limpiarEstadosGlobales() {
+  console.log('🧹 [INICIO] Limpiando estados globales (locks, pending messages)...');
+  pendingMessages.clear();
+  threadLocks.clear();
+  console.log('✅ [INICIO] Estados globales limpiados.');
+}
+
+limpiarEstadosGlobales(); // Ejecutar la limpieza al iniciar
 
 const stats = {
   mensajes_recibidos: 0,
@@ -145,7 +155,7 @@ const stats = {
 // ----------------------------------------------------
 
 function limpiarNumero(numero) {
-  return numero?.replace(/[^\d]/g, "") || "";
+  return numero?.replace(/[^Vd]/g, "") || "";
 }
 
 function formatearTiempo(ms) {
@@ -225,7 +235,7 @@ function debeIgnorarMensaje(message) {
     }
     
     if (isEmpty || isSpam) {
-      console.log(`🚫 [FILTRO] Spam/vacío ignorado: "${body.substring(0, 50)}..."`);
+      console.log(`🚫 [FILTRO] Spam/vacío ignorado: "${body.substring(0, 50)}"...`);
       stats.mensajes_filtrados++;
       return true;
     }
@@ -235,7 +245,7 @@ function debeIgnorarMensaje(message) {
       return false;
     }
     
-    console.log(`✅ [FILTRO] Mensaje válido de: ${from} - "${body.substring(0, 50)}..."`);
+    console.log(`✅ [FILTRO] Mensaje válido de: ${from} - "${body.substring(0, 50)}"...`);
     return false;
     
   } catch (error) {
@@ -538,20 +548,20 @@ async function manejarComandoAdmin(message) {
         
       case body.startsWith("!human"):
         humanModeUsers.add(chatId);
-        await message.reply("🧑‍💼 *Modo humano activado*\nTus mensajes no serán procesados por el asistente IA hasta que uses `!ai`");
+        await client.sendMessage(chatId, "🧑‍💼 *Modo humano activado*\nTus mensajes no serán procesados por el asistente IA hasta que uses `!ai`");
         break;
         
       case body.startsWith("!ai"):
         humanModeUsers.delete(chatId);
-        await message.reply("🤖 *Modo IA activado*\nTus mensajes serán procesados por el asistente IA");
+        await client.sendMessage(chatId, "🤖 *Modo IA activado*\nTus mensajes serán procesados por el asistente IA");
         break;
         
       default:
-        await message.reply("❓ Comando no reconocido. Usa `!help` para ver comandos disponibles.");
+        await client.sendMessage(chatId, "❓ Comando no reconocido. Usa `!help` para ver comandos disponibles.");
     }
   } catch (error) {
     console.error("❌ [ERROR-ADMIN]", error);
-    await message.reply("❌ Error al procesar comando administrativo");
+    await client.sendMessage(chatId, "❌ Error al procesar comando administrativo");
   }
 }
 
@@ -561,25 +571,9 @@ async function enviarStats(message) {
     ? formatearTiempo(stats.tiempo_promedio.reduce((a, b) => a + b, 0) / stats.tiempo_promedio.length)
     : "0.0";
   
-  const statsText = `📊 *ESTADÍSTICAS DEL BOT*
+  const statsText = `📊 *ESTADÍSTICAS DEL BOT*\n\n⏱️ *Tiempo activo:* ${uptime} minutos\n📨 *Mensajes recibidos:* ${stats.mensajes_recibidos}\n🚫 *Mensajes filtrados:* ${stats.mensajes_filtrados}\n✅ *Respuestas exitosas:* ${stats.respuestas_exitosas}\n🔄 *Respuestas con reintento:* ${stats.respuestas_reintento}\n⏰ *Timeouts primer intento:* ${stats.timeouts_primer_intento}\n🚨 *Timeouts totales:* ${stats.timeouts_totales}\n👥 *Usuarios nuevos:* ${stats.usuarios_nuevos}\n❌ *Errores:* ${stats.errores}\n🛑 *Runs cancelados:* ${stats.runs_cancelados}\n⚡ *Tiempo promedio:* ${promedioTiempo}s\n\n🧵 *Threads activos:* ${chatThreads.size}\n🏃 *Runs activos:* ${activeRuns.size}\n👤 *Modo humano:* ${humanModeUsers.size} usuarios`;
 
-⏱️ *Tiempo activo:* ${uptime} minutos
-📨 *Mensajes recibidos:* ${stats.mensajes_recibidos}
-🚫 *Mensajes filtrados:* ${stats.mensajes_filtrados}
-✅ *Respuestas exitosas:* ${stats.respuestas_exitosas}
-🔄 *Respuestas con reintento:* ${stats.respuestas_reintento}
-⏰ *Timeouts primer intento:* ${stats.timeouts_primer_intento}
-🚨 *Timeouts totales:* ${stats.timeouts_totales}
-👥 *Usuarios nuevos:* ${stats.usuarios_nuevos}
-❌ *Errores:* ${stats.errores}
-🛑 *Runs cancelados:* ${stats.runs_cancelados}
-⚡ *Tiempo promedio:* ${promedioTiempo}s
-
-🧵 *Threads activos:* ${chatThreads.size}
-🏃 *Runs activos:* ${activeRuns.size}
-👤 *Modo humano:* ${humanModeUsers.size} usuarios`;
-
-  await message.reply(statsText);
+  await client.sendMessage(message.from, statsText);
 }
 
 async function enviarStatus(message) {
@@ -588,41 +582,28 @@ async function enviarStatus(message) {
     return `• ${runId.substring(0, 8)}... (${tiempo}s)`;
   }).join('\n');
   
-  const statusText = `🔍 *ESTADO DEL SISTEMA*
+  const statusText = `🔍 *ESTADO DEL SISTEMA*\n\n🏃 *Runs activos (${activeRuns.size}):*\n${runsActivos || "Ninguno"}\n\n🧵 *Threads:* ${chatThreads.size}\n👤 *Modo humano:* ${humanModeUsers.size}\n📝 *Mensajes pendientes:* ${pendingMessages.size}\n🔒 *Locks activos:* ${threadLocks.size}\n\n💾 *Memoria:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
 
-🏃 *Runs activos (${activeRuns.size}):*
-${runsActivos || "Ninguno"}
-
-🧵 *Threads:* ${chatThreads.size}
-👤 *Modo humano:* ${humanModeUsers.size}
-📝 *Mensajes pendientes:* ${pendingMessages.size}
-🔒 *Locks activos:* ${threadLocks.size}
-
-💾 *Memoria:* ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`;
-
-  await message.reply(statusText);
+  await client.sendMessage(message.from, statusText);
 }
 
 async function enviarUptime(message) {
   const uptime = obtenerUptime();
   const memory = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
-  await message.reply(`⏱️ *Uptime:* ${uptime} minutos\n💾 *Memoria:* ${memory}MB`);
+  await client.sendMessage(message.from, `⏱️ *Uptime:* ${uptime} minutos\n💾 *Memoria:* ${memory}MB`);
 }
 
 async function enviarAyuda(message) {
-  const helpText = `🆘 *COMANDOS ADMINISTRATIVOS*
+  const helpText = `🆘 *COMANDOS ADMINISTRATIVOS*\n\n📊 \\\`!stats\\\
+- Estadísticas del bot\n🔍 \\\`!status\\\
+- Estado actual del sistema\n⏱️ \\\`!uptime\\\
+- Mostrar tiempo activo\n🧹 \\\`!cleanup\\\
+- Limpiar runs activos\n👤 \\\`!human\\\
+- Activar modo humano (sin IA)\n🤖 \\\`!ai\\\
+- Activar modo IA\n❓ \\\`!help\\\
+- Mostrar esta ayuda\n\n*Nota:* Los comandos admin solo funcionan en chats privados.`;
 
-📊 \`!stats\` - Estadísticas del bot
-🔍 \`!status\` - Estado actual del sistema
-⏱️ \`!uptime\` - Mostrar tiempo activo
-🧹 \`!cleanup\` - Limpiar runs activos
-👤 \`!human\` - Activar modo humano (sin IA)
-🤖 \`!ai\` - Activar modo IA
-❓ \`!help\` - Mostrar esta ayuda
-
-*Nota:* Los comandos admin solo funcionan en chats privados.`;
-
-  await message.reply(helpText);
+  await client.sendMessage(message.from, helpText);
 }
 
 async function limpiarRunsGlobales(message) {
@@ -641,11 +622,11 @@ async function limpiarRunsGlobales(message) {
     activeRuns.clear();
     stats.runs_cancelados += runsALimpiar;
     
-    await message.reply(`🧹 *Limpieza completada*\n${runsALimpiar} runs cancelados y limpiados.`);
+    await client.sendMessage(message.from, `🧹 *Limpieza completada*\n${runsALimpiar} runs cancelados y limpiados.`);
     
   } catch (error) {
     console.error("❌ [ERROR-CLEANUP-GLOBAL]", error);
-    await message.reply("❌ Error durante la limpieza global");
+    await client.sendMessage(message.from, "❌ Error durante la limpieza global");
   }
 }
 
@@ -657,12 +638,12 @@ async function procesarMensaje(message) {
   const startTime = Date.now();
   stats.mensajes_recibidos++;
   
+  const chatId = message.from;
   try {
     if (debeIgnorarMensaje(message)) {
       return;
     }
     
-    const chatId = message.from;
     const body = message.body?.trim() || "";
     
     if (esComandoAdmin(body)) {
@@ -692,7 +673,7 @@ async function procesarMensaje(message) {
     threadLocks.set(chatId, Date.now());
     
     try {
-      console.log(`📨 [PROCESANDO] Mensaje de ${chatId}: "${body.substring(0, 100)}..."`);
+      console.log(`📨 [PROCESANDO] Mensaje de ${chatId}: "${body.substring(0, 100)}"...`);
       
       const threadId = await obtenerOCrearThread(chatId);
       const threadLimpio = await limpiarContextoSiNecesario(threadId);
@@ -740,7 +721,7 @@ async function procesarMensaje(message) {
       // Limpiar respuesta antes de enviar
       const respuestaLimpia = limpiarRespuestaAsistente(respuesta);
       
-      await message.reply(respuestaLimpia);
+      await client.sendMessage(chatId, respuestaLimpia);
       stats.respuestas_exitosas++;
       
       const tiempoTotal = Date.now() - startTime;
@@ -755,7 +736,7 @@ async function procesarMensaje(message) {
         : "❌ Ocurrió un error al procesar tu mensaje. Por favor, intenta nuevamente.";
       
       try {
-        await message.reply(mensajeError);
+        await client.sendMessage(chatId, mensajeError);
       } catch (replyError) {
         console.error("❌ [ERROR-REPLY]", replyError);
       }
@@ -784,9 +765,10 @@ async function procesarMensaje(message) {
 
 async function procesarAudio(message) {
   let tempFilePath = null;
+  const chatId = message.from;
   
   try {
-    console.log(`🎵 [AUDIO] Procesando mensaje de audio de ${message.from}`);
+    console.log(`🎵 [AUDIO] Procesando mensaje de audio de ${chatId}`);
     
     const media = await message.downloadMedia();
     if (!media || !media.data) {
@@ -806,7 +788,7 @@ async function procesarAudio(message) {
     const textoTranscrito = await speechToText(openai, tempFilePath);
     
     if (!textoTranscrito || textoTranscrito.trim().length === 0) {
-      await message.reply("🎵 No pude entender el audio. Por favor, intenta enviar un mensaje de texto o un audio más claro.");
+      await client.sendMessage(chatId, "🎵 No pude entender el audio. Por favor, intenta enviar un mensaje de texto o un audio más claro.");
       return;
     }
     
@@ -826,7 +808,7 @@ async function procesarAudio(message) {
     
   } catch (error) {
     console.error("❌ [ERROR-AUDIO]", error);
-    await message.reply("❌ Ocurrió un error al procesar el audio. Por favor, intenta enviar un mensaje de texto.");
+    await client.sendMessage(chatId, "❌ Ocurrió un error al procesar el audio. Por favor, intenta enviar un mensaje de texto.");
   } finally {
     // Limpiar archivo temporal
     if (tempFilePath) {
@@ -969,6 +951,7 @@ async function manejarMensajeEntrante(message) {
 }
 
 client.on("message_create", async (message) => {
+  console.log(`[DEBUG] Mensaje recibido en message_create: from=${message.from}, body="${message.body}"`);
   try {
     if (message.fromMe) {
       return;

@@ -65,18 +65,15 @@ COPY . .
 # Asegura que el script de inicio sea ejecutable
 RUN chmod +x /app/start.sh
 
-# Expone el puerto que usa tu app (aunque WhatsApp no necesita puerto HTTP)
-EXPOSE 3000
+# Cambiar el propietario de los archivos de la aplicación al usuario no-root
+RUN chown -R appuser:appuser /app
 
-# Ejecuta el contenedor como root para que start.sh pueda ajustar permisos
-USER root
-
-# Comando principal que prepara la sesión y lanza la app como nodeuser
-CMD ["/app/start.sh"]
+# Cambiar al usuario no-root
+USER appuser
 
 # Exponer el puerto que Fly.io usará internamente
 EXPOSE 3000
 
 # Comando para iniciar la aplicación
-CMD ["node", "index.js"]
+CMD ["/app/start.sh"]
 

@@ -26,3 +26,6 @@ npm-debug.log*
 # Archivos generados por el sistema operativo
 .DS_Store
 Thumbs.db
+
+# Cache de whatsapp-web.js
+.wwebjs_cache/

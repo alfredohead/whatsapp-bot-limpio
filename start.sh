@@ -34,8 +34,8 @@ mkdir -p "$SESSION_DIR"
 echo "INFO: Directorio de sesión asegurado en $SESSION_DIR"
 
 # Fix permissions in case the volume was mounted with root ownership
-if id -u nodeuser >/dev/null 2>&1; then
-  chown -R nodeuser:nodejs "$SESSION_DIR" 2>/dev/null || true
+if id -u appuser >/dev/null 2>&1; then
+  chown -R appuser:appuser "$SESSION_DIR" 2>/dev/null || true
 fi
 
 # Ensure temp_audio directory exists and has correct permissions
@@ -51,8 +51,8 @@ fi
 
 mkdir -p "$TEMP_AUDIO_DIR"
 echo "INFO: Directorio temporal de audio asegurado en $TEMP_AUDIO_DIR"
-if id -u nodeuser >/dev/null 2>&1; then
-  chown -R nodeuser:nodejs "$TEMP_AUDIO_DIR" 2>/dev/null || true
+if id -u appuser >/dev/null 2>&1; then
+  chown -R appuser:appuser "$TEMP_AUDIO_DIR" 2>/dev/null || true
 fi
 chmod 755 "$TEMP_AUDIO_DIR" || true
 
@@ -60,6 +60,6 @@ chmod 755 "$TEMP_AUDIO_DIR" || true
 rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie" "$SESSION_DIR/SingletonSocket"
 
 # Launch the bot as the nodeuser while preserving environment variables
-exec su --preserve-environment -s /bin/sh nodeuser -c "node index.js"
+exec node index.js
 
 
