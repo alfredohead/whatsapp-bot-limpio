@@ -49,7 +49,7 @@ WORKDIR /app
 COPY --from=dependencies / /
 
 # Crear un usuario no-root para mayor seguridad
-RUN useradd --create-home --shell /bin/bash appuser
+RUN useradd --create-home --shell /bin/bash nodeuser
 
 # Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
 # Esto se hace primero para aprovechar el cache de Docker y acelerar builds futuros.
@@ -66,14 +66,13 @@ COPY . .
 RUN chmod +x /app/start.sh
 
 # Cambiar el propietario de los archivos de la aplicación al usuario no-root
-RUN chown -R appuser:appuser /app
+RUN chown -R nodeuser:nodeuser /app
 
 # Cambiar al usuario no-root
-USER appuser
+USER nodeuser
 
 # Exponer el puerto que Fly.io usará internamente
 EXPOSE 3000
 
 # Comando para iniciar la aplicación
 CMD ["/app/start.sh"]
-
