@@ -56,8 +56,10 @@ if id -u nodeuser >/dev/null 2>&1; then
 fi
 chmod 755 "$TEMP_AUDIO_DIR" || true
 
-# Remove Chromium lock files that may remain from a crashed session
-rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie" "$SESSION_DIR/SingletonSocket"
+# Force clean session on every start to ensure a new QR code is generated if needed
+echo "INFO: Forcing a clean session by removing old session files..."
+rm -rf "$SESSION_DIR"/*
+echo "INFO: Session directory cleaned."
 
-# Launch the bot as the nodeuser while preserving environment variables
+# Launch the bot
 exec node index.js
