@@ -35,12 +35,7 @@ echo "INFO: Directorio de sesión asegurado en $SESSION_DIR"
 
 # Fix permissions in case the volume was mounted with root ownership
 if id -u nodeuser >/dev/null 2>&1; then
-  echo "INFO: Checking ownership of /app/session before chown..."
-  ls -ld /app/session
-  echo "INFO: Applying chown to /app/session..."
-  chown -R nodeuser:nodeuser /app/session
-  echo "INFO: chown command finished. Checking ownership after chown..."
-  ls -ld /app/session
+  chown -R nodeuser:nodeuser "$SESSION_DIR" 2>/dev/null || true
 fi
 
 # Ensure temp_audio directory exists and has correct permissions
@@ -61,10 +56,8 @@ if id -u nodeuser >/dev/null 2>&1; then
 fi
 chmod 755 "$TEMP_AUDIO_DIR" || true
 
-# Force clean session on every start to ensure a new QR code is generated if needed
-echo "INFO: Forcing a clean session by removing old session files..."
-rm -rf "$SESSION_DIR"/*
-echo "INFO: Session directory cleaned."
+# Remove Chromium lock files that may remain from a crashed session
+rm -f "$SESSION_DIR/SingletonLock" "$SESSION_DIR/SingletonCookie" "$SESSION_DIR/SingletonSocket"
 
 # Launch the bot
 exec node index.js
