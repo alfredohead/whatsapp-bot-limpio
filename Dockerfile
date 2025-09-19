@@ -50,7 +50,10 @@ COPY --from=dependencies / /
 
 # Crear un usuario no-root para mayor seguridad
 # Se crea el grupo y usuario con GID y UID 1001 para que coincida con el volumen montado en Fly.io
-RUN groupadd -g 1001 nodeuser && useradd --create-home --shell /bin/bash -u 1001 -g 1001 nodeuser
+RUN deluser nodeuser || true && \
+    delgroup nodeuser || true && \
+    addgroup --gid 1001 nodeuser && \
+    adduser --system --uid 1001 --ingroup nodeuser --home /home/nodeuser --shell /bin/bash nodeuser
 
 # Copia explícitamente package.json y package-lock.json para asegurar que ambos estén presentes
 # Esto se hace primero para aprovechar el cache de Docker y acelerar builds futuros.
