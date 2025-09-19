@@ -30,7 +30,7 @@ const SESSION_BASE_PATH = path.resolve(
 );
 
 try {
-  fs.mkdirSync(SESSION_BASE_PATH, { recursive: true });
+  fs.mkdirSync(SESSION_BASE_PATH, { recursive: true, mode: 0o775 });
   console.log(`✅ [SETUP] Directorio de sesión disponible: ${SESSION_BASE_PATH}`);
 } catch (error) {
   console.error(`❌ [CRÍTICO] No se pudo asegurar el directorio de sesión requerido: ${SESSION_BASE_PATH}`, error);
