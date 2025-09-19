@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+echo "DEBUG: User ID: $(id -u)"
+echo "DEBUG: Group ID: $(id -g)"
+echo "DEBUG: Whoami: $(whoami)"
+
 # Robustecemos la lectura de variables desde /app/.env si existe
 # Solo cargar .env si no estamos en Fly.io (FLY_APP_NAME no está definido)
 if [ -z "$FLY_APP_NAME" ] && [ -f /app/.env ]; then
