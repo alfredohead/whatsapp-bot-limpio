@@ -66,8 +66,8 @@ console.log("✅ [OpenAI] Configuración validada correctamente");
 
 // Configuración optimizada
 const CONFIG = {
-  TIMEOUT_PRINCIPAL: 45,
-  TIMEOUT_REINTENTO: 35,
+  TIMEOUT_PRINCIPAL: 60,
+  TIMEOUT_REINTENTO: 50,
   TIMEOUT_RAPIDO: 25,
   MAX_REINTENTOS: 2,
   LIMPIEZA_RUNS: 2 * 60 * 1000,
